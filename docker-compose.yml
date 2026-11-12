@@ -1,0 +1,41 @@
+name: tiktok-ultra-downloader
+
+services:
+  bot:
+    image: tiktok-ultra-downloader:local
+    platform: linux/arm64
+    build:
+      context: .
+      target: runtime
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DOWNLOAD_DIR: /app/downloads
+      CACHE_DB_PATH: /app/data/cache.sqlite3
+    volumes:
+      - cache-data:/app/data
+      - download-work:/app/downloads
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    read_only: true
+    user: "10001:10001"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 90s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.5
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  cache-data:
+  download-work:

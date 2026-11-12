@@ -1,0 +1,16 @@
+# Default deny: no secrets, virtualenv, tests, databases, downloads or old scaffold.
+**
+!Dockerfile
+!pyproject.toml
+!constraints.txt
+!README.md
+!bot/
+!bot/**
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.env
+**/.env.*
+**/*.sqlite3*
+**/*.log
+**/.venv/

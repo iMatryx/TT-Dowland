@@ -1,0 +1,25 @@
+.env
+.venv/
+.python/
+.uv-cache/
+*.egg-info/
+build/
+dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.log
+downloads/*
+!downloads/.gitkeep
+# Historical stage-one scaffold; the maintained project is this repository root.
+/tiktok-ultra-downloader/
+backups/
+
