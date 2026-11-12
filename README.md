@@ -152,6 +152,23 @@ TIKTOK_TEST_URL='LINK_PUBLIC_REAL' .venv/bin/python -m pytest -m live -s
 probă de descărcare reușită. CLI-ul păstrează fișierul și afișează JSON cu
 metadate raportate/măsurate; în Telegram fișierul local se șterge după trimitere.
 
+## Publicare sigură pe GitHub
+
+Publică numai codul și `.env.example`, cu `BOT_TOKEN` gol. Fișierele `.env` și
+variantele lor locale, directoarele `.oci`/`.ssh`/`.aws`, cheile private și
+fișierele Terraform cu secrete sunt excluse prin `.gitignore`; contextul Docker
+le exclude separat, inclusiv dacă ar fi plasate în `bot/`.
+
+Botul nu folosește chei API Oracle pentru rularea pe VM. Cheile administrative
+OCI și SSH rămân în afara proiectului și nu se montează în container. Tokenul
+Telegram se configurează numai în mediul de execuție sau `.env` privat.
+
+Înainte de fiecare publicare verifică `git status` și fișierele din commit;
+nu folosi `git add -f` pentru credențiale. `.gitignore` nu elimină secrete deja
+comise. Dacă o cheie reală a ajuns vreodată într-un commit, revoc-o/rotește-o la
+furnizor înainte de publicare și curăță separat istoricul; ștergerea fișierului
+din ultima versiune nu revocă cheia.
+
 ## Activare Telegram, ulterior
 
 Creează botul în BotFather când dorești activarea și completează **local**

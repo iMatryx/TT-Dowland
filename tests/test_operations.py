@@ -202,6 +202,7 @@ async def test_fresh_same_key_request_survives_previous_cancellation_cleanup() -
     queue = WorkQueue(concurrency=1, capacity=2, timeout=2)
     started, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
     second_started, second_release = asyncio.Event(), asyncio.Event()
+    replacement_calls = 0
 
     async def abandoned():
         started.set()
@@ -212,6 +213,8 @@ async def test_fresh_same_key_request_survives_previous_cancellation_cleanup() -
             await release.wait()
 
     async def replacement():
+        nonlocal replacement_calls
+        replacement_calls += 1
         second_started.set()
         await second_release.wait()
         return 42
@@ -231,6 +234,7 @@ async def test_fresh_same_key_request_survives_previous_cancellation_cleanup() -
         await asyncio.sleep(0)
         second_release.set()
         assert await asyncio.gather(second, follower) == [42, 42]
+        assert replacement_calls == 1
     finally:
         release.set()
         second_release.set()
