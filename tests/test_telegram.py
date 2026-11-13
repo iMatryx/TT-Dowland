@@ -43,10 +43,12 @@ def interaction():
 
 @pytest.mark.asyncio
 async def test_start(interaction) -> None:
-    await start_handler(interaction.message)
+    from bot.handlers.commands import welcome_handler
+    await welcome_handler(interaction.message)
     text = interaction.message.answer.call_args.args[0]
     assert "🎬 <b>TikTok Ultra Downloader</b>" in text
-    assert "Fără watermark, dacă este disponibil" in text
+    assert "TikTok, YouTube Shorts sau Instagram Reels" in text
+    assert "Videoclipul apare automat în chat." in text
 
 
 @pytest.mark.asyncio
@@ -55,8 +57,9 @@ async def test_help(interaction) -> None:
     text = interaction.message.answer.call_args.args[0]
     assert "Ca fișier" in text
     assert "50 MB" in text
-    assert "Premium" in text
-    assert "upscaling" in text
+    assert "Doar audio" in text
+    assert "Info" in text
+    assert "TikTok" in text and "YouTube Shorts" in text and "Instagram Reels" in text
 
 
 @pytest.mark.asyncio
@@ -78,12 +81,9 @@ async def test_audio_callback_requests_audio_and_cleans(interaction, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_link_still_offers_audio_when_watermark_preference_is_unavailable(interaction):
-    from bot.models.preferences import UserPreferences
+async def test_link_still_offers_audio_when_clean_video_is_unavailable(interaction):
     interaction.service.analyze.return_value.formats[0].has_watermark = True
-    preferences = SimpleNamespace(get_preferences=AsyncMock(return_value=UserPreferences(watermark='watermarked')))
-    await link_handler(interaction.message, interaction.service, interaction.pending, interaction.sender,
-                       preferences=preferences)
+    await link_handler(interaction.message, interaction.service, interaction.pending, interaction.sender)
     keyboard = interaction.status.edit_text.call_args.kwargs.get('reply_markup')
     assert keyboard is not None
     assert [b.callback_data.split(':')[1] for row in keyboard.inline_keyboard for b in row
@@ -256,6 +256,10 @@ async def test_real_dispatcher_routes_link_and_callback_with_mock_session(
 
     session.side_effect = request
     dispatcher = create_dispatcher(Settings(DOWNLOAD_DIR=tmp_path, CACHE_DB_PATH=tmp_path / "cache.sqlite3"))
+    store = dispatcher['language_store']
+    token = await store.begin_language_choice(1, 10)
+    await store.bind_language_choice(1, token, 20)
+    assert await store.select_language(1, 10, 20, token, 'ro')
     dependencies = dict(download_service=interaction.service, pending=interaction.pending,
                         sender=interaction.sender)
     result = result_for(interaction, tmp_path)
@@ -275,5 +279,5 @@ async def test_real_dispatcher_routes_link_and_callback_with_mock_session(
         assert any(isinstance(call, SendVideo if mode == "video" else SendDocument) for call in calls)
         assert not result.file_path.exists()
     finally:
-        await dispatcher["preferences"].close()
+        await dispatcher["media_details"].close()
         await bot.session.close()

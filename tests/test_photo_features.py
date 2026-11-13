@@ -25,13 +25,13 @@ def test_photo_metadata_preserves_order_and_rejects_incomplete_album():
         metadata_from_ytdlp(data, URL)
 
 
-def test_maximum_and_clean_are_independent():
+def test_highest_selection_requires_clean_source():
     formats = [VideoFormat(format_id='clean', ext='mp4', width=720, height=1280, has_watermark=False),
                VideoFormat(format_id='max', ext='mp4', width=2160, height=3840, has_watermark=True)]
-    assert select_formats(formats, preference='maximum').video.format_id == 'clean'
-    assert select_formats(formats, preference='clean').video.format_id == 'clean'
+    assert select_formats(formats).video.format_id == 'clean'
+    assert select_formats(formats).video.format_id == 'clean'
     with pytest.raises(VideoUnavailableError):
-        select_formats(formats[1:], preference='clean')
+        select_formats(formats[1:])
 
 
 def test_public_item_original_image_variant_and_playback_evidence():
@@ -130,14 +130,14 @@ async def test_photo_album_batches_keep_order(tmp_path, count, groups, singles):
     assert all('100×200' in caption for caption in captions)
 
 
-def test_cache_separates_clean_and_maximum_selection():
+def test_cache_identity_uses_same_clean_source_for_document_and_video():
     from bot.models import VideoInfo
     from bot.services.runtime import quality_key
     info = VideoInfo(id='123', webpage_url=URL, formats=[
         VideoFormat(format_id='clean', ext='mp4', width=720, height=1280, has_watermark=False),
         VideoFormat(format_id='maximum', ext='mp4', width=2160, height=3840, has_watermark=True)])
-    assert quality_key(info, 'clean') == quality_key(info, 'maximum')
-    assert quality_key(info, 'document') == quality_key(info, 'maximum')
+    assert quality_key(info, 'video') == quality_key(info, 'document')
+    assert quality_key(info, 'document') == quality_key(info, 'video')
 
 
 def test_local_api_endpoint_changes_session_and_upload_limit():
@@ -264,9 +264,7 @@ def test_buttons_keep_smaller_clean_variant_when_maximum_is_too_large():
     info = VideoInfo(id='123', webpage_url=URL, formats=[
         VideoFormat(format_id='clean', ext='mp4', has_watermark=False, filesize=20_000_000),
         VideoFormat(has_watermark=True, format_id='max', ext='mp4', width=2160, height=3840, filesize=80_000_000)])
-    from bot.models.preferences import UserPreferences
-    keyboard = download_keyboard('key', info, max_bytes=50_000_000,
-                                 preferences=UserPreferences(watermark='prefer_clean'))
+    keyboard = download_keyboard('key', info, max_bytes=50_000_000)
     assert [r[0].callback_data.split(':')[1] for r in keyboard.inline_keyboard if r[0].callback_data.startswith('dl:')] == ['chat', 'file', 'zip', 'audio']
 
 

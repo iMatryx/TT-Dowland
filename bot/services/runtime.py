@@ -5,12 +5,14 @@ from dataclasses import dataclass
 import hashlib
 import json
 import logging
+
+from bot.utils.i18n import tr
 import httpx
 from aiogram import Bot
 
 from bot.config import Settings
+from bot.services.restart import RestartController
 from bot.models import VideoInfo
-from bot.models.preferences import UserPreferences
 from bot.models.exceptions import InvalidCachedFileError, TelegramDeliveryError, QueueFullError, DownloadTimeoutError
 from bot.services.conversion import ConversionLimiter
 from bot.services.analysis_cache import CachedExtractor
@@ -28,24 +30,18 @@ logger = logging.getLogger(__name__)
 ORIGINAL_RETENTION_SECONDS = 180
 
 
-def quality_preference(mode: str) -> str:
-    return "clean"
-
-
-def quality_key(info: VideoInfo, mode: str = "video", options: UserPreferences | None = None) -> str:
+def quality_key(info: VideoInfo, mode: str = "video") -> str:
     if info.media_type == "photo":
-        if options is not None:
-            info = select_photos(info, quality=options.quality, watermark=options.watermark)
+        info = select_photos(info)
         data = [str(info.webpage_url), [(p.width, p.height, p.has_watermark, p.watermark_evidence) for p in info.photos]]
         return hashlib.sha256(json.dumps(data).encode()).hexdigest()
-    selected = (FormatSelection(select_audio(info.formats, quality=options.quality if options else 'high')) if mode == 'audio'
-                else select_formats(info.formats, quality=options.quality, watermark=options.watermark) if options is not None
-                else select_formats(info.formats, preference=quality_preference(mode)))
+    selected = (FormatSelection(select_audio(info.formats)) if mode == 'audio'
+                else select_formats(info.formats))
     fields = ("format_id", "ext", "width", "height", "fps", "tbr", "video_codec", "audio_codec",
               "has_watermark", "has_audio", "has_video")
     data = {"url": str(info.webpage_url), "audio_only": mode == 'audio',
             "preview": mode == 'preview',
-            "audio_quality": (options.quality if options else 'high') if mode == 'audio' else None,
+            "audio_quality": 'high' if mode == 'audio' else None,
             "video": {name: getattr(selected.video, name) for name in fields},
             "audio": {name: getattr(selected.audio, name) for name in fields} if selected.audio else None}
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
@@ -60,6 +56,7 @@ class _Receipt:
 class BotRuntime:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.restart = RestartController(settings.administrator_ids, enabled=settings.restart_enabled)
         self.work_dir = settings.download_dir.expanduser().resolve() / "bot-work"
         self.extraction_caches: set[CachedExtractor] = set()
         self.telegram_metrics = CacheMetrics("telegram")
@@ -77,7 +74,7 @@ class BotRuntime:
         self.limiter = UserLimiter(requests=settings.user_requests_per_minute,
                                    cooldown=settings.user_cooldown_seconds, active_limit=settings.max_user_operations)
         self.cache = SQLiteCache(settings.cache_db_path, ttl=settings.cache_ttl_seconds) if settings.cache_enabled else None
-        self.preferences = self.cache if self.cache is not None else SQLiteCache(settings.cache_db_path, ttl=settings.cache_ttl_seconds)
+        self.media_details = self.cache if self.cache is not None else SQLiteCache(settings.cache_db_path, ttl=settings.cache_ttl_seconds)
         self.client: httpx.AsyncClient | None = None
         self.handlers: set[asyncio.Task] = set()
         self.closing = False
@@ -87,7 +84,7 @@ class BotRuntime:
         await asyncio.to_thread(self.lock.acquire)
         try:
             await self.cleaner.sweep(recovery=True)
-            await self.preferences.open()
+            await self.media_details.open()
             self.client = public_http_client(limit=self.settings.http_max_connections)
             self._cleaner_task = asyncio.create_task(self._clean_loop(), name="abandoned-file-cleaner")
             logger.info("Bot runtime started concurrency=%d queue_capacity=%d", self.settings.max_concurrent_downloads,
@@ -112,22 +109,22 @@ class BotRuntime:
         info = await self.queue.run("analysis:" + url, lambda: retry_async(lambda: service.analyze(url)))
         return info.model_copy(deep=True)
 
-    async def _cached(self, bot_id: int, info: VideoInfo, mode: SendMode, options: UserPreferences | None = None, *, record: bool = True) -> CacheEntry | None:
+    async def _cached(self, bot_id: int, info: VideoInfo, mode: SendMode, *, record: bool = True) -> CacheEntry | None:
         if self.cache is None:
             return None
         try:
-            for kind in (("video",) if mode == "preview" else ("audio",) if mode == "audio" else ("zip",) if mode == "zip" else ("document",) if mode in {"document", "clean_document"} else ("video", "document")):
-                entry = await self.cache.get(bot_id, info.id, quality_key(info, mode, options), kind)
+            for kind in (("video",) if mode == "preview" else ("audio",) if mode == "audio" else ("zip",) if mode == "zip" else ("document",) if mode == "document" else ("video", "document")):
+                entry = await self.cache.get(bot_id, info.id, quality_key(info, mode), kind)
                 if entry is None and mode == "preview":
                     # An original playable upload is also a valid preview. Processed
                     # previews retain their own key and can never become originals.
-                    candidate = await self.cache.get(bot_id, info.id, quality_key(info, "video", options), "video")
+                    candidate = await self.cache.get(bot_id, info.id, quality_key(info, "video"), "video")
                     verified = candidate.verified if candidate else None
                     if (verified is not None and not verified.remuxed and not verified.transcoded
                             and video_compatible(verified.ext, verified)):
                         entry = candidate
                 if entry is not None:
-                    if mode in {"video", "maximum", "clean"} and kind == "document" and video_compatible(
+                    if mode == "video" and kind == "document" and video_compatible(
                         entry.verified.ext if entry.verified else "", entry.verified,
                     ):
                         continue
@@ -152,37 +149,30 @@ class BotRuntime:
     @scoped
     async def deliver(self, bot: Bot, chat_id: int, info: VideoInfo, mode: SendMode, service: TelegramDownloadService,
                       sender: TelegramSender, progress: ProgressMessage, *, message_thread_id: int | None = None,
-                      options: UserPreferences | None = None, owner_id: int | None = None) -> None:
+                      owner_id: int | None = None) -> None:
         mode = resolve_delivery_mode(info, mode)
         try:
             async with asyncio.timeout(self.settings.operation_timeout_seconds):
                 await self._deliver(bot, chat_id, info, mode, service, sender, progress,
-                                    message_thread_id=message_thread_id, options=options, owner_id=owner_id)
+                                    message_thread_id=message_thread_id, owner_id=owner_id)
         except TimeoutError as exc:
             raise DownloadTimeoutError("Delivery operation deadline exceeded.") from exc
 
     async def _deliver(self, bot: Bot, chat_id: int, info: VideoInfo, mode: SendMode, service: TelegramDownloadService,
                       sender: TelegramSender, progress: ProgressMessage, *, message_thread_id: int | None = None,
-                      _refresh: bool = False, options: UserPreferences | None = None, owner_id: int | None = None) -> None:
+                      _refresh: bool = False, owner_id: int | None = None) -> None:
         async def download_original():
-            if mode == 'audio':
-                return await service.download(str(info.webpage_url), audio_only=True,
-                                              quality=options.quality if options else 'high')
-            if options is not None:
-                return await service.download(str(info.webpage_url), quality=options.quality, watermark=options.watermark)
-            if info.media_type == "video" and mode != "video":
-                return await service.download(str(info.webpage_url), preference=quality_preference(mode))
-            return await service.download(str(info.webpage_url))
+            return await service.download(str(info.webpage_url), **({'audio_only': True} if mode == 'audio' else {}))
 
         if info.media_type == "photo":
             # File-id caching of Telegram previews would lose original image bytes.
             # Lease the verified originals across concurrent recipients instead.
             async def photo_upload():
                 async with self.files.acquire(
-                    f"photo:{info.id}:{quality_key(info, mode, options)}",
+                    f"photo:{info.id}:{quality_key(info, mode)}",
                     download_original,
                 ) as result:
-                    await progress.update("📤 Trimit fotografiile originale...")
+                    await progress.update(tr('📤 Trimit fotografiile originale...'))
                     await sender.send(bot, chat_id, result, mode, message_thread_id=message_thread_id)
             # A delivery is per user; coalescing uploads would omit recipients.
             import secrets
@@ -199,16 +189,16 @@ class BotRuntime:
                 logger.warning("Could not edit delivery progress")
 
         async def send_cached(entry: CacheEntry) -> None:
-            await status("📤 Pregătesc trimiterea...")
+            await status(tr('📤 Pregătesc trimiterea...'))
             await sender.send_cached(bot, chat_id, entry, info, message_thread_id=message_thread_id,
-                                     **({'owner_id': owner_id, 'preferences': options} if owner_id is not None else {}))
+                                     **({'owner_id': owner_id} if owner_id is not None else {}))
             if mode == 'preview':
-                original_key = f"{bot.id}:{info.id}:{quality_key(info, 'video', options)}"
+                original_key = f"{bot.id}:{info.id}:{quality_key(info, 'video')}"
                 self.files.retain(original_key, seconds=ORIGINAL_RETENTION_SECONDS)
 
         if self.closing:
             raise QueueFullError("Service is shutting down")
-        entry = None if _refresh else await self._cached(bot.id, info, mode, options, record=False)
+        entry = None if _refresh else await self._cached(bot.id, info, mode, record=False)
         if entry is not None:
             self.telegram_metrics.record(True)
             try:
@@ -219,22 +209,22 @@ class BotRuntime:
                 _refresh = True
 
         async def upload() -> _Receipt:
-            cached = None if _refresh else await self._cached(bot.id, info, mode, options)
+            cached = None if _refresh else await self._cached(bot.id, info, mode)
             if cached is not None:
                 return _Receipt(cached, None)
-            await status("📥 Descarc videoclipul...")
-            key = f"{bot.id}:{info.id}:{quality_key(info, 'video' if mode == 'preview' else mode, options)}"
+            await status(tr('📥 Descarc videoclipul...'))
+            key = f"{bot.id}:{info.id}:{quality_key(info, 'video' if mode == 'preview' else mode)}"
             async with self.files.acquire(key, download_original) as result:
-                await status("📤 Pregătesc trimiterea...")
+                await status(tr('📤 Pregătesc trimiterea...'))
                 sent = await sender.send_with_receipt(bot, chat_id, result, mode, message_thread_id=message_thread_id,
-                    **({'owner_id': owner_id, 'preferences': options} if owner_id is not None else {}))
+                    **({'owner_id': owner_id} if owner_id is not None else {}))
                 if mode == 'preview':
                     self.files.retain(key, seconds=ORIGINAL_RETENTION_SECONDS, result=result)
                 record = None
                 if sent.file_id:
                     record = CacheEntry(
                         bot_id=bot.id, video_id=result.video_info.id, url=str(result.video_info.webpage_url),
-                        quality=quality_key(result.video_info, mode, options), kind=sent.kind, file_id=sent.file_id,
+                        quality=quality_key(result.video_info, mode), kind=sent.kind, file_id=sent.file_id,
                         size=sent.file_size_bytes if sent.file_size_bytes is not None else result.file_size_bytes, source=result.format,
                         verified=sent.verified_format or result.verified_format,
                         original=sent.kind in {"document", "zip"},
@@ -246,7 +236,7 @@ class BotRuntime:
                             logger.warning("Cache write failed after successful delivery error=%s", type(exc).__name__)
                 return _Receipt(record, owner)
 
-        key = f"delivery:{bot.id}:{info.id}:{quality_key(info, mode, options)}:{mode}:{chat_id}:{message_thread_id}"
+        key = f'delivery:{bot.id}:{info.id}:{quality_key(info, mode)}:{mode}:{chat_id}:{message_thread_id}'
         receipt = await self.delivery_queue.run(key, upload)
         if receipt.owner is not owner:
             if receipt.entry is None:
@@ -259,7 +249,7 @@ class BotRuntime:
                 if self.cache is not None:
                     await self._invalidate(receipt.entry)
                 await self._deliver(bot, chat_id, info, mode, service, sender, progress,
-                                    message_thread_id=message_thread_id, _refresh=True, options=options, owner_id=owner_id)
+                                    message_thread_id=message_thread_id, _refresh=True, owner_id=owner_id)
 
     async def close(self) -> None:
         self.closing = True
@@ -277,7 +267,7 @@ class BotRuntime:
         for close in (self.delivery_queue.close, self.queue.close, self.files.close,
                       *(cache.close for cache in self.extraction_caches),
                       *([self.client.aclose] if self.client is not None else []),
-                      self.preferences.close):
+                      self.media_details.close):
             try:
                 await close()
             except Exception as exc:

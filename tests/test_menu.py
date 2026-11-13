@@ -7,56 +7,14 @@ from bot.services.cache import SQLiteCache
 
 
 @pytest.mark.asyncio
-async def test_preferences_survive_restart_and_are_isolated(tmp_path):
-    store = SQLiteCache(tmp_path / 'settings.sqlite3')
-    try:
-        default = await store.get_preferences(11)
-        assert default.quality == 'high' and default.watermark == 'without'
-        await store.update_preferences(11, quality='low', watermark='watermarked')
-    finally:
-        await store.close()
-    reopened = SQLiteCache(tmp_path / 'settings.sqlite3')
-    try:
-        saved = await reopened.get_preferences(11)
-        assert saved.quality == 'high' and saved.watermark == 'without'
-        assert (await reopened.get_preferences(22)).quality == 'high'
-    finally:
-        await reopened.close()
-
-
-@pytest.mark.asyncio
-async def test_concurrent_preference_updates_do_not_overwrite_other_fields(tmp_path):
-    import asyncio
-    store = SQLiteCache(tmp_path / 'settings.sqlite3')
-    try:
-        await asyncio.gather(store.update_preferences(11, watermark='watermarked'),
-                             store.update_preferences(11, quality='low'))
-        saved = await store.get_preferences(11)
-        assert saved.watermark == 'without'
-        assert saved.quality == 'high'
-        from pydantic import ValidationError
-        with pytest.raises(ValidationError):
-            await store.update_preferences(11, watermark='bogus')
-        assert (await store.get_preferences(11)).watermark == 'without'
-    finally:
-        await store.close()
-
-
-@pytest.mark.asyncio
 async def test_start_has_persistent_menu():
-    from bot.handlers.commands import start_handler
+    from bot.handlers.commands import welcome_handler
     message = SimpleNamespace(answer=AsyncMock())
-    await start_handler(message)
+    await welcome_handler(message)
     keyboard = message.answer.call_args.kwargs['reply_markup']
     assert keyboard.is_persistent and keyboard.resize_keyboard
     assert [b.text for row in keyboard.keyboard for b in row] == [
-        '📥 Descarcă video', '⚙️ Preferințe', '❓ Cum folosesc botul', 'ℹ️ Limite și calitate']
-
-
-def test_quality_and_watermark_settings_are_independent():
-    from bot.models.preferences import UserPreferences
-    assert UserPreferences(quality='low', watermark='watermarked').model_dump() == {'quality': 'high', 'watermark': 'without'}
-    assert UserPreferences(quality='high', watermark='any').model_dump() == {'quality': 'high', 'watermark': 'without'}
+        '📥 Descarcă video', '❓ Cum folosesc botul', 'ℹ️ Limite și calitate']
 
 
 @pytest.fixture
@@ -82,13 +40,17 @@ async def menu_app(tmp_path):
 
     session.side_effect = request
     dispatcher = create_dispatcher(Settings(DOWNLOAD_DIR=tmp_path, CACHE_DB_PATH=tmp_path / 'cache.sqlite3'))
+    store = dispatcher['language_store']
+    token = await store.begin_language_choice(11, 10)
+    await store.bind_language_choice(11, token, 20)
+    assert await store.select_language(11, 10, 20, token, 'ro')
     service = SimpleNamespace(analyze=AsyncMock(), download=AsyncMock(), max_download_bytes=50_000_000)
     state = SimpleNamespace(bot=bot, dispatcher=dispatcher, calls=calls, service=service)
     try:
         yield state
     finally:
-        if 'preferences' in dispatcher.workflow_data:
-            await dispatcher['preferences'].close()
+        if 'media_details' in dispatcher.workflow_data:
+            await dispatcher['media_details'].close()
         await bot.session.close()
 
 
@@ -155,7 +117,7 @@ async def test_download_stages_edit_one_status_message(menu_app, tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('text', ['📥 Descarcă video', '📥 Descarcă TikTok', '⚙️ Preferințe', '❓ Cum folosesc botul', 'ℹ️ Limite și calitate', '/menu', '/settings'])
+@pytest.mark.parametrize('text', ['📥 Descarcă video', '📥 Descarcă TikTok', '❓ Cum folosesc botul', 'ℹ️ Limite și calitate', '/menu'])
 async def test_menu_buttons_are_routed_before_link_analysis(menu_app, text):
     from aiogram.methods import SendMessage
     await feed_message(menu_app, text)
@@ -166,37 +128,12 @@ async def test_menu_buttons_are_routed_before_link_analysis(menu_app, text):
 
 
 @pytest.mark.asyncio
-async def test_preference_callback_rejects_other_user_and_persists_valid_change(tmp_path):
-    from bot.handlers.menu import change_preference
-    from bot.handlers.keyboards import PreferenceCallback
-    store = SQLiteCache(tmp_path / 'preferences.sqlite3')
-    message = SimpleNamespace(edit_text=AsyncMock())
-    query = SimpleNamespace(data=PreferenceCallback(owner=11, field='watermark', value='watermarked').pack(),
-                            from_user=SimpleNamespace(id=22), message=message, answer=AsyncMock())
-    try:
-        await change_preference(query, store)
-        assert (await store.get_preferences(11)).watermark == 'without'
-        message.edit_text.assert_not_awaited()
-        query.from_user.id = 11
-        await change_preference(query, store)
-        assert (await store.get_preferences(11)).watermark == 'without'
-        message.edit_text.assert_not_awaited()
-        assert query.answer.call_args.kwargs['show_alert'] is True
-        query.data = PreferenceCallback(owner=11, field='ask_each_time', value='bogus').pack()
-        await change_preference(query, store)
-        assert (await store.get_preferences(11)).quality == 'high'
-    finally:
-        await store.close()
-
-
-@pytest.mark.asyncio
-async def test_automatic_video_uses_saved_source_preferences(menu_app, tmp_path):
+async def test_automatic_video_uses_fixed_source_policy(menu_app, tmp_path):
     from aiogram.methods import SendVideo
     from bot.models import VideoInfo, VideoFormat, DownloadResult
     source = VideoFormat(format_id='clean', ext='mp4', width=720, height=1280, has_watermark=False,
                          video_codec='h264', audio_codec='aac', has_audio=True)
     info = VideoInfo(id='123', webpage_url='https://www.tiktok.com/@author/video/123', formats=[source])
-    await menu_app.dispatcher['preferences'].update_preferences(11, quality='low', watermark='prefer_clean')
     path = tmp_path / 'original.mp4'
     path.write_bytes(b'original')
     menu_app.service.analyze.return_value = info
@@ -204,7 +141,7 @@ async def test_automatic_video_uses_saved_source_preferences(menu_app, tmp_path)
         verified_format=source, file_path=path, file_size_bytes=8)
     await feed_message(menu_app, str(info.webpage_url))
     menu_app.service.download.assert_awaited_once()
-    assert menu_app.service.download.call_args.kwargs == {'quality': 'high', 'watermark': 'without'}
+    assert menu_app.service.download.call_args.kwargs == {}
     assert any(isinstance(c, SendVideo) for c in menu_app.calls)
     assert not path.exists()
 
@@ -237,10 +174,9 @@ async def test_cancel_choice_is_owner_bound_and_does_not_interrupt_active_downlo
 
 
 @pytest.mark.asyncio
-async def test_oversized_saved_choice_asks_instead_of_downloading(menu_app):
+async def test_oversized_highest_source_asks_instead_of_downloading(menu_app):
     from aiogram.methods import EditMessageText
     from bot.models import VideoInfo, VideoFormat
-    await menu_app.dispatcher['preferences'].update_preferences(11, quality='high', watermark='any')
     info = VideoInfo(id='123', webpage_url='https://www.tiktok.com/@author/video/123', formats=[
         VideoFormat(has_watermark=False, format_id='max', ext='mp4', width=2160, height=3840, filesize=80_000_000),
         VideoFormat(format_id='clean', ext='mp4', has_watermark=False, filesize=20_000_000)])
@@ -250,25 +186,6 @@ async def test_oversized_saved_choice_asks_instead_of_downloading(menu_app):
     edits = [c for c in menu_app.calls if isinstance(c, EditMessageText)]
     assert edits[-1].reply_markup is None
     assert 'prea mare' in edits[-1].text
-
-
-
-@pytest.mark.asyncio
-async def test_preferences_work_when_media_cache_is_disabled(tmp_path):
-    from bot.config import Settings
-    from bot.services.runtime import BotRuntime
-    settings = Settings(DOWNLOAD_DIR=tmp_path / 'downloads', CACHE_DB_PATH=tmp_path / 'db.sqlite3', CACHE_ENABLED=False)
-    first = BotRuntime(settings)
-    await first.start()
-    await first.preferences.update_preferences(11, quality='low')
-    await first.close()
-    second = BotRuntime(settings)
-    try:
-        await second.start()
-        assert second.cache is None
-        assert (await second.preferences.get_preferences(11)).quality == 'high'
-    finally:
-        await second.close()
 
 
 @pytest.mark.asyncio
@@ -294,14 +211,3 @@ async def test_photos_keep_delivery_choice_before_downloading(menu_app):
         webpage_url='https://www.tiktok.com/@author/photo/123', photos=[PhotoInfo(has_watermark=False, urls=['https://cdn.example/photo.jpg'])])
     await feed_message(menu_app, 'https://www.tiktok.com/@author/video/123')
     menu_app.service.download.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_reset_preferences_restores_source_defaults(tmp_path):
-    store = SQLiteCache(tmp_path / 'settings.sqlite3')
-    try:
-        await store.update_preferences(11, quality='low', watermark='watermarked')
-        saved = await store.update_preferences(11, reset=True)
-        assert saved.quality == 'high' and saved.watermark == 'without'
-    finally:
-        await store.close()

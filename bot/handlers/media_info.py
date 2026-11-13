@@ -1,6 +1,8 @@
 """Show/hide saved media metadata by editing its caption in place."""
 
 import logging
+
+from bot.utils.i18n import tr
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import CallbackQuery, InaccessibleMessage, InlineKeyboardMarkup
@@ -20,48 +22,48 @@ async def pending_info_handler(query: CallbackQuery, pending: PendingRequests,
     try:
         action = PendingInfoCallback.unpack(query.data or '')
     except (ValueError, TypeError):
-        await query.answer('Buton invalid.', show_alert=True)
+        await query.answer(tr('Buton invalid.'), show_alert=True)
         return
     item = pending.get(action.key)
     message = query.message
     if (item is None or message is None or isinstance(message, InaccessibleMessage)
             or item.user_id != query.from_user.id or item.chat_id != message.chat.id
             or item.message_id != message.message_id):
-        await query.answer('Buton expirat sau destinat altui utilizator. Trimite din nou linkul.', show_alert=True)
+        await query.answer(tr('Buton expirat sau destinat altui utilizator. Trimite din nou linkul.'), show_alert=True)
         return
     if item.busy:
-        await query.answer('Descărcarea este în curs.', show_alert=True)
+        await query.answer(tr('Descărcarea este în curs.'), show_alert=True)
         return
     item.busy = True
     try:
-        captions = selection_captions(item.info, item.preferences)
+        captions = selection_captions(item.info)
         expanded = action.action == 'show'
         limit = min(sender.policy.max_upload_bytes, getattr(download_service, 'max_download_bytes', sender.policy.max_upload_bytes))
         progress = ProgressMessage(message)
         await progress.update(captions[1 if expanded else 0], reply_markup=download_keyboard(
-            item.key, item.info, max_bytes=limit, preferences=item.preferences, expanded=expanded))
+            item.key, item.info, max_bytes=limit, expanded=expanded))
         item.message_id = progress.message.message_id
     except TelegramAPIError:
-        await query.answer('Nu am putut actualiza informațiile. Încearcă din nou.', show_alert=True)
+        await query.answer(tr('Nu am putut actualiza informațiile. Încearcă din nou.'), show_alert=True)
         return
     finally:
         item.busy = False
     await query.answer()
 
 
-async def media_info_handler(query: CallbackQuery, bot: Bot, preferences: SQLiteCache) -> None:
+async def media_info_handler(query: CallbackQuery, bot: Bot, media_details: SQLiteCache) -> None:
     message = query.message
     if query.data not in {'mi:show', 'mi:hide'} or message is None or isinstance(message, InaccessibleMessage):
-        await query.answer('Informațiile nu sunt disponibile.', show_alert=True)
+        await query.answer(tr('Informațiile nu sunt disponibile.'), show_alert=True)
         return
     try:
-        saved = await preferences.get_media_details(bot.id, message.chat.id, message.message_id)
+        saved = await media_details.get_media_details(bot.id, message.chat.id, message.message_id)
     except Exception as exc:
         logger.warning('Media information lookup failed error=%s', type(exc).__name__)
-        await query.answer('Informațiile sunt temporar indisponibile.', show_alert=True)
+        await query.answer(tr('Informațiile sunt temporar indisponibile.'), show_alert=True)
         return
     if saved is None:
-        await query.answer('Informațiile au expirat. Trimite din nou linkul pentru detalii.', show_alert=True)
+        await query.answer(tr('Informațiile au expirat. Trimite din nou linkul pentru detalii.'), show_alert=True)
         return
     expanded = query.data == 'mi:show'
     keyboard = media_info_keyboard(expanded=expanded, photo=saved[0].startswith(('🖼', '🗜')))
@@ -75,10 +77,10 @@ async def media_info_handler(query: CallbackQuery, bot: Bot, preferences: SQLite
             reply_markup=keyboard)
     except TelegramBadRequest as exc:
         if 'message is not modified' not in exc.message.lower():
-            await query.answer('Nu pot edita acest mesaj. Fișierul nu a fost retrimis.', show_alert=True)
+            await query.answer(tr('Nu pot edita acest mesaj. Fișierul nu a fost retrimis.'), show_alert=True)
             return
     except TelegramAPIError:
-        await query.answer('Nu am putut actualiza informațiile. Încearcă din nou.', show_alert=True)
+        await query.answer(tr('Nu am putut actualiza informațiile. Încearcă din nou.'), show_alert=True)
         return
     await query.answer()
 

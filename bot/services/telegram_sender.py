@@ -4,6 +4,8 @@ from typing import ClassVar, Literal, Protocol, TypeVar
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 import asyncio
+from bot.utils.i18n import tr, localized
+
 import logging
 from pathlib import Path
 from contextlib import nullcontext
@@ -26,7 +28,7 @@ from bot.services.conversion import ConversionLimiter
 from bot.services.media import verification_matches
 from bot.utils.telegram_text import video_details
 
-SendMode = Literal["chat", "file", "video", "document", "maximum", "clean", "clean_document", "photos", "album", "zip", "audio", "preview"]
+SendMode = Literal["chat", "file", "video", "document", "photos", "album", "zip", "audio", "preview"]
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
@@ -74,11 +76,12 @@ def video_compatible(extension: str, verified: VideoFormat | None) -> bool:
 
 
 class TelegramSender:
-    def __init__(self, policy: TelegramUploadPolicy | None = None, *, timeout: float = 120, details: SQLiteCache | None = None, pending=None, conversions: ConversionLimiter | None = None) -> None:
+    def __init__(self, policy: TelegramUploadPolicy | None = None, *, timeout: float = 120, details: SQLiteCache | None = None, pending=None, conversions: ConversionLimiter | None = None, registry=None) -> None:
         self.policy = policy or CloudUploadPolicy()
         self.timeout = timeout
         self.details = details
         self.pending = pending
+        self.registry = registry
         self.conversions = conversions or ConversionLimiter()
 
     def check_size(self, size: int) -> None:
@@ -86,20 +89,20 @@ class TelegramSender:
             raise FileSizeLimitError("File exceeds the Telegram upload policy.")
 
     async def send(self, bot: Bot, chat_id: int, result: DownloadResult, mode: SendMode,
-                   *, message_thread_id: int | None = None, owner_id: int | None = None, preferences=None) -> SendMode:
+                   *, message_thread_id: int | None = None, owner_id: int | None = None) -> SendMode:
         mode = resolve_delivery_mode(result.video_info, mode)
         if result.video_info.media_type == "photo":
             await self.send_photos(bot, chat_id, result, mode, message_thread_id=message_thread_id)
             return mode
         sent = await self.send_with_receipt(bot, chat_id, result, mode, message_thread_id=message_thread_id,
-                                            owner_id=owner_id, preferences=preferences)
+                                            owner_id=owner_id)
         return sent.kind
 
     @scoped
     async def send_with_receipt(self, bot: Bot, chat_id: int, result: DownloadResult, mode: SendMode,
-                                *, message_thread_id: int | None = None, owner_id: int | None = None, preferences=None) -> SentMedia:
+                                *, message_thread_id: int | None = None, owner_id: int | None = None) -> SentMedia:
         mode = resolve_delivery_mode(result.video_info, mode)
-        if result.video_info.media_type != "video" or mode not in {"video", "document", "maximum", "clean", "clean_document", "zip", "audio", "preview"}:
+        if result.video_info.media_type != "video" or mode not in {"video", "document", "zip", "audio", "preview"}:
             raise TelegramDeliveryError("Media kind changed; analyze the post again.")
         path = result.file_path
         if path.is_symlink() or not path.is_file():
@@ -121,11 +124,11 @@ class TelegramSender:
         compatible = video_compatible(path.suffix, verified)
         if mode == 'preview' and not compatible:
             return await self._send_preview(bot, chat_id, result, message_thread_id=message_thread_id,
-                                            owner_id=owner_id, preferences=preferences)
-        actual_mode: SendMode = "video" if mode in {"video", "maximum", "clean", "preview"} and compatible else "document"
+                                            owner_id=owner_id)
+        actual_mode: SendMode = "video" if mode in {"video", "preview"} and compatible else "document"
         caption = video_details(result.video_info, verified, result.format, size)
-        if mode in {"video", "maximum", "clean"} and actual_mode == "document":
-            caption += "\nℹ️ Format incompatibil ca video; trimit originalul ca document."
+        if mode == "video" and actual_mode == "document":
+            caption += tr('\nℹ️ Format incompatibil ca video; trimit originalul ca document.')
         captions = video_captions(result.video_info, verified, result.format, size, document=actual_mode == "document") if self.details is not None else None
         kwargs = dict(chat_id=chat_id, caption=captions[0] if captions else caption, parse_mode="HTML")
         if captions:
@@ -151,14 +154,16 @@ class TelegramSender:
         if captions:
             await self._remember_info(bot, response, captions)
         if actual_mode == 'video' and owner_id is not None:
-            await self._attach_video_actions(bot, response, result.video_info, owner_id, preferences)
+            await self._attach_video_actions(bot, response, result.video_info, owner_id)
         media = getattr(response, actual_mode, None)
         file_id = getattr(media, "file_id", None)
         return SentMedia(actual_mode, file_id if isinstance(file_id, str) and file_id else None, size, verified)
 
-    async def _send_preview(self, bot, chat_id, result, *, message_thread_id=None, owner_id=None, preferences=None):
+    async def _send_preview(self, bot, chat_id, result, *, message_thread_id=None, owner_id=None):
         from bot.services.preview import create_preview
-        with tempfile.TemporaryDirectory(prefix='.preview-', dir=result.file_path.parent) as temporary:
+        with tempfile.TemporaryDirectory(prefix='.preview-', dir=result.file_path.parent) as temporary, (
+            self.registry.track(Path(temporary)) if self.registry else nullcontext()
+        ):
             path = Path(temporary) / 'preview.mp4'
             prepared = await create_preview(result.file_path, path, max_bytes=self.policy.max_upload_bytes,
                                             timeout=self.timeout, conversions=self.conversions,
@@ -172,16 +177,16 @@ class TelegramSender:
             preview = result.model_copy(update={'file_path': path, 'file_size_bytes': path.stat().st_size,
                                                 'verified_format': verified})
             return await self.send_with_receipt(bot, chat_id, preview, 'video', message_thread_id=message_thread_id,
-                                                owner_id=owner_id, preferences=preferences)
+                                                owner_id=owner_id)
 
-    async def _attach_video_actions(self, bot: Bot, message: Message, info: VideoInfo, owner_id: int, preferences=None):
+    async def _attach_video_actions(self, bot: Bot, message: Message, info: VideoInfo, owner_id: int):
         if self.pending is None or not isinstance(message, Message):
             return
         item = None
         try:
             item = self.pending.add(owner_id, message.chat.id, message.message_id, info,
-                                    preferences=preferences, delivered=True)
-            keyboard = delivered_video_keyboard(item.key, info, max_bytes=self.policy.max_upload_bytes, preferences=preferences)
+                                    delivered=True)
+            keyboard = delivered_video_keyboard(item.key, info, max_bytes=self.policy.max_upload_bytes)
             await self._request(lambda: bot.edit_message_reply_markup(chat_id=message.chat.id,
                 message_id=message.message_id, reply_markup=keyboard), bot=bot, upload=False)
         except Exception as exc:
@@ -239,11 +244,11 @@ class TelegramSender:
                 if path.is_symlink() or not path.is_file() or path.stat().st_size != result.file_size_bytes:
                     raise CorruptFileError("ZIP is missing or changed.")
                 self.check_size(result.file_size_bytes)
-                dimensions = list(dict.fromkeys(f"{p.width}×{p.height}" for p in result.photos))
+                dimensions = list(dict.fromkeys(f'{p.width}×{p.height}' for p in result.photos))
                 captions = zip_captions(result) if self.details is not None else None
                 options = {"reply_markup": media_info_keyboard(photo=True), "parse_mode": "HTML"} if captions else {}
                 response = await self._request(lambda: bot.send_document(document=FSInputFile(path),
-                    caption=captions[0] if captions else "Fotografii originale, în ordinea postării. ZIP fără recodare.\nRezoluții verificate: "
+                    caption=captions[0] if captions else tr('Fotografii originale, în ordinea postării. ZIP fără recodare.\nRezoluții verificate: ')
                             + ", ".join(dimensions[:12]), **kwargs, **options), bot=bot)
                 if captions:
                     await self._remember_info(bot, response, captions)
@@ -254,8 +259,8 @@ class TelegramSender:
                 and p.file_path.suffix.lower() in {".jpg", ".png"} for p in result.photos)
             for start in range(0, len(result.photos), 10):
                 batch = result.photos[start:start + 10]
-                caption = "Album foto (Telegram poate comprima). Pentru originale alege fișiere sau ZIP." if preview else "Fotografii originale."
-                captions = [f"{start + i + 1}/{len(result.photos)} · Rezoluție verificată: {p.width}×{p.height}"
+                caption = tr('Album foto (Telegram poate comprima). Pentru originale alege fișiere sau ZIP.') if preview else tr('Fotografii originale.')
+                captions = [tr('{value0}/{value1} · Rezoluție verificată: {value2}×{value3}', value0=start + i + 1, value1=len(result.photos), value2=p.width, value3=p.height)
                             + ("\n" + caption if i == 0 else "") for i, p in enumerate(batch)]
                 detail_captions = [photo_captions(result.video_info, p, start + i, preview=preview)
                                    for i, p in enumerate(batch)] if self.details is not None else []
@@ -287,7 +292,9 @@ class TelegramSender:
 
     async def _send_video_zip(self, bot: Bot, chat_id: int, result: DownloadResult,
                               *, message_thread_id: int | None = None) -> SentMedia:
-        with tempfile.TemporaryDirectory(prefix=".tiktok-zip-", dir=result.file_path.parent) as temporary:
+        with tempfile.TemporaryDirectory(prefix=".tiktok-zip-", dir=result.file_path.parent) as temporary, (
+            self.registry.track(Path(temporary)) if self.registry else nullcontext()
+        ):
             archive = Path(temporary) / "original-video.zip"
             def build():
                 with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
@@ -342,7 +349,7 @@ class TelegramSender:
 
     @scoped
     async def send_cached(self, bot: Bot, chat_id: int, entry: CacheEntry, info: VideoInfo,
-                          *, message_thread_id: int | None = None, owner_id: int | None = None, preferences=None) -> None:
+                          *, message_thread_id: int | None = None, owner_id: int | None = None) -> None:
         self.check_size(entry.size)
         if entry.kind in {"document", "zip"} and not entry.original:
             raise InvalidCachedFileError("Cached media is not an original document.")
@@ -368,7 +375,7 @@ class TelegramSender:
             if captions:
                 await self._remember_info(bot, response, captions)
             if entry.kind == 'video' and owner_id is not None:
-                await self._attach_video_actions(bot, response, info, owner_id, preferences)
+                await self._attach_video_actions(bot, response, info, owner_id)
         except TelegramBadRequest as exc:
             if any(text in exc.message.lower() for text in ("file_id", "file identifier", "file reference", "wrong remote file")):
                 raise InvalidCachedFileError("Telegram rejected a cached file identifier.") from exc
@@ -378,5 +385,6 @@ class TelegramSender:
             raise TelegramDeliveryError("Telegram cached media delivery failed.") from exc
 
 
+@localized
 def audio_caption(info: VideoInfo) -> str:
     return media_title(info)

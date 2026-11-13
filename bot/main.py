@@ -26,26 +26,38 @@ def configure_logging(level: str, token: str | None = None) -> None:
             existing.token = token
 
 
-async def run_polling(settings: Settings) -> None:
+async def run_polling(settings: Settings) -> int:
     """Connect only when explicitly run with a configured BotFather token."""
     from bot.telegram_config import create_bot, create_dispatcher
     from bot.services.runtime import BotRuntime
 
     bot = create_bot(settings)
     runtime = BotRuntime(settings)
+    watcher = None
     try:
         await runtime.start()
         dispatcher = create_dispatcher(settings, runtime=runtime)
+        async def watch_restart():
+            await runtime.restart.requested.wait()
+            runtime.closing = True
+            logging.getLogger(__name__).info('Authorized controlled restart requested')
+            await dispatcher.stop_polling()
+        watcher = asyncio.create_task(watch_restart(), name='restart-watcher')
         await dispatcher.start_polling(
             bot, allowed_updates=dispatcher.resolve_used_update_types(),
             close_bot_session=False, handle_signals=True,
             tasks_concurrency_limit=settings.max_pending_requests + settings.max_concurrent_downloads + 4,
         )
     finally:
+        if watcher is not None:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
         try:
             await runtime.close()
         finally:
             await bot.session.close()
+    from bot.services.restart import RESTART_EXIT_CODE
+    return RESTART_EXIT_CODE if runtime.restart.requested.is_set() else 0
 
 
 def main() -> int:
@@ -62,7 +74,7 @@ def main() -> int:
             create_dispatcher(settings)
             print("Interfața Telegram este configurată. Verificare offline; nicio conexiune inițiată.")
         else:
-            asyncio.run(run_polling(settings))
+            return asyncio.run(run_polling(settings))
     except ConfigurationError as exc:
         logging.getLogger(__name__).error("%s", exc)
         return 1

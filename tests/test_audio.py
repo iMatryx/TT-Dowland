@@ -25,7 +25,7 @@ def test_audio_selects_separate_stream_and_respects_quality():
     low = VideoFormat(has_watermark=False, format_id='low', ext='m4a', has_video=False, has_audio=True, tbr=64)
     high = low.model_copy(update={'format_id': 'high', 'tbr': 192})
     assert select_audio([muxed, low, high]).format_id == 'high'
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         select_audio([muxed, low, high], quality='low')
     assert select_audio([muxed]).format_id == 'video'
     with pytest.raises(VideoUnavailableError):
@@ -129,8 +129,7 @@ def test_small_audio_remains_available_when_video_is_too_big():
 
 
 def test_audio_still_available_when_no_clean_video_exists():
-    from bot.models.preferences import UserPreferences
     info = VideoInfo(id='clip', webpage_url=URL, formats=[
         VideoFormat(has_watermark=True, format_id='video', ext='mp4', has_audio=True),
     ])
-    assert available_actions(info, preferences=UserPreferences(watermark='watermarked')) == [('audio', '🎵 Doar audio')]
+    assert available_actions(info) == [('audio', '🎵 Doar audio')]

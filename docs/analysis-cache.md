@@ -11,18 +11,24 @@ Cache-ul Telegram de `file_id` rămâne separat.
 CACHE_ENABLED=true
 ANALYSIS_CACHE_TTL_SECONDS=300
 ANALYSIS_CACHE_CAPACITY=512
+ANALYSIS_CACHE_MAX_MB=64
 ```
 
 | Setare | Implicit | Reguli |
 | --- | --- | --- |
 | `ANALYSIS_CACHE_TTL_SECONDS` | 300 s (5 minute) | Număr finit, strict pozitiv. TTL fix de la finalizarea extracției; hit-urile nu îl prelungesc. |
 | `ANALYSIS_CACHE_CAPACITY` | 512 | Număr de intrări între 1 și 10.000. Evacuare LRU; accesul mută intrarea la final. |
+| `ANALYSIS_CACHE_MAX_MB` | 64 MiB | Bugetul snapshoturilor reținute după serializare, cu chei și rezervă pentru obiecte; strict pozitiv. |
 | `CACHE_ENABLED` | true | false dezactivează retenția și metricile ambelor cache-uri. Analizele aflate simultan în lucru continuă să fie unite. |
 
 TTL-ul folosește un ceas monoton. Intrările expirate sunt eliminate la următoarea
 căutare și nu sunt reutilizate. Cache-ul este exclusiv în memorie, se golește la
 shutdown și nu supraviețuiește repornirii. Capacitatea limitează numărul de
-snapshoturi; un JSON de extracție mai mare de 10 MiB este refuzat.
+snapshoturi, iar bugetul de memorie limitează independent volumul reținut.
+LRU evacuează înaintea depășirii oricărei limite. O intrare mai mare decât
+întregul buget este returnată apelanților curenți, dar nu este memorată.
+Contabilizarea include reprezentarea efectivă a stringurilor serializate, nu doar
+fișierul original. Un JSON de extracție mai mare de 10 MiB este refuzat.
 
 ## Datele reutilizate și izolarea
 

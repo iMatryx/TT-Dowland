@@ -50,7 +50,8 @@ etapelor măsurate.
 
 - `cache=metadata`: snapshoturi de extracție în memorie, comune analizei afișate
   și descărcării. TTL implicit 300 s (`ANALYSIS_CACHE_TTL_SECONDS`), maximum 512
-  intrări LRU (`ANALYSIS_CACHE_CAPACITY`). Se păstrează metadatele și JSON-ul
+  intrări LRU (`ANALYSIS_CACHE_CAPACITY`), cu buget de 64 MiB
+  (`ANALYSIS_CACHE_MAX_MB`) pentru snapshoturile reținute. Se păstrează metadatele și JSON-ul
   extractorului, fără referințe la workspace-uri șterse; apelurile primesc copii
   și fișiere proprii. Erorile nu se memorează. Un transfer cu date memorate care
   eșuează upstream invalidează intrarea și încearcă o singură dată cu date proaspete.

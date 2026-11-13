@@ -4,14 +4,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import os
-import json
+import secrets
 from pathlib import Path
 import sqlite3
 import time
 from typing import Callable, Literal, TypeVar
 
 from bot.models import VideoFormat
-from bot.models.preferences import UserPreferences
+from bot.utils.i18n import LANGUAGES, serialize_text, deserialize_text
 
 T = TypeVar("T")
 
@@ -29,10 +29,6 @@ class CacheEntry:
     verified: VideoFormat | None
     processed_at: float = field(default_factory=time.time)
     original: bool = False
-
-
-def _saved_preferences(settings: str) -> UserPreferences:
-    return UserPreferences.model_validate_json(settings)
 
 
 class SQLiteCache:
@@ -62,8 +58,12 @@ class SQLiteCache:
                         PRIMARY KEY (bot_id, video_id, quality, kind)
                     );
                     CREATE INDEX IF NOT EXISTS media_processed ON media(processed_at);
-                    CREATE TABLE IF NOT EXISTS user_preferences (
-                        user_id INTEGER PRIMARY KEY, settings TEXT NOT NULL
+                    DROP TABLE IF EXISTS user_preferences;
+                    CREATE TABLE IF NOT EXISTS user_languages (
+                        user_id INTEGER PRIMARY KEY,
+                        language TEXT CHECK (language IN ('ro','ru','en') OR language IS NULL),
+                        choice_token TEXT, choice_chat INTEGER, choice_message INTEGER,
+                        choice_expires REAL
                     );
                     CREATE TABLE IF NOT EXISTS media_details (
                         bot_id INTEGER NOT NULL, chat_id INTEGER NOT NULL,
@@ -97,7 +97,7 @@ class SQLiteCache:
         def write(db):
             with db:
                 db.execute("INSERT OR REPLACE INTO media_details VALUES (?,?,?,?,?,?)",
-                           (bot_id, chat_id, message_id, summary, details, time.time()))
+                           (bot_id, chat_id, message_id, serialize_text(summary), serialize_text(details), time.time()))
                 db.execute("DELETE FROM media_details WHERE processed_at<=?", (time.time() - self.ttl,))
                 db.execute("DELETE FROM media_details WHERE rowid IN "
                            "(SELECT rowid FROM media_details ORDER BY processed_at DESC LIMIT -1 OFFSET ?)", (self.capacity,))
@@ -108,23 +108,49 @@ class SQLiteCache:
             row = db.execute("SELECT summary,details FROM media_details WHERE bot_id=? AND chat_id=? "
                              "AND message_id=? AND processed_at>?", (bot_id, chat_id, message_id, time.time() - self.ttl)).fetchone()
             return (row[0], row[1]) if row else None
+        row = await self._call(read)
+        return (deserialize_text(row[0]), deserialize_text(row[1])) if row else None
+
+    async def get_language(self, user_id: int) -> str | None:
+        def read(db):
+            row = db.execute('SELECT language FROM user_languages WHERE user_id=?', (user_id,)).fetchone()
+            return row[0] if row and row[0] in LANGUAGES else None
         return await self._call(read)
 
-    async def get_preferences(self, user_id: int) -> UserPreferences:
-        def read(db: sqlite3.Connection) -> UserPreferences:
-            row = db.execute("SELECT settings FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
-            return _saved_preferences(row[0]) if row else UserPreferences()
-        return await self._call(read)
-
-    async def update_preferences(self, user_id: int, *, reset: bool = False, **changes) -> UserPreferences:
-        def write(db: sqlite3.Connection) -> UserPreferences:
-            # Read, validate and write within the database's serialized transaction.
+    async def begin_language_choice(self, user_id: int, chat_id: int) -> str:
+        token = secrets.token_urlsafe(12)
+        def write(db):
             with db:
-                row = db.execute("SELECT settings FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
-                current = _saved_preferences(row[0]).model_dump() if row and not reset else {}
-                result = UserPreferences.model_validate({**current, **changes})
-                db.execute("INSERT OR REPLACE INTO user_preferences VALUES (?,?)", (user_id, result.model_dump_json()))
-            return result
+                db.execute('INSERT OR REPLACE INTO user_languages VALUES (?,NULL,?,?,NULL,?)',
+                           (user_id, token, chat_id, time.time() + 600))
+        await self._call(write)
+        return token
+
+    async def bind_language_choice(self, user_id: int, token: str, message_id: int) -> bool:
+        def write(db):
+            with db:
+                cursor = db.execute('UPDATE user_languages SET choice_message=? WHERE user_id=? AND choice_token=?',
+                                    (message_id, user_id, token))
+                return cursor.rowcount == 1
+        return await self._call(write)
+
+    async def language_choice_valid(self, user_id: int, chat_id: int, message_id: int, token: str) -> bool:
+        def read(db):
+            return db.execute('SELECT 1 FROM user_languages WHERE user_id=? AND choice_chat=? '
+                'AND choice_message=? AND choice_token=? AND choice_expires>?',
+                (user_id, chat_id, message_id, token, time.time())).fetchone() is not None
+        return await self._call(read)
+
+    async def select_language(self, user_id: int, chat_id: int, message_id: int, token: str, language: str) -> bool:
+        if language not in LANGUAGES:
+            raise ValueError('Unsupported language')
+        def write(db):
+            with db:
+                cursor = db.execute('UPDATE user_languages SET language=?,choice_token=NULL,choice_chat=NULL,'
+                    'choice_message=NULL,choice_expires=NULL WHERE user_id=? AND choice_chat=? '
+                    'AND choice_message=? AND choice_token=? AND choice_expires>?',
+                    (language, user_id, chat_id, message_id, token, time.time()))
+                return cursor.rowcount == 1
         return await self._call(write)
 
     async def get(self, bot_id: int, video_id: str, quality: str,

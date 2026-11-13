@@ -83,5 +83,5 @@ async def test_real_telegram_delivery(tmp_path):
                 result.cleanup()
     finally:
         await engine.close()
-        await dispatcher['preferences'].close()
+        await dispatcher['media_details'].close()
         await bot.session.close()

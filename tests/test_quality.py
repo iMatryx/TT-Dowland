@@ -28,7 +28,7 @@ def test_known_clean_precedes_unknown_and_watermarked() -> None:
     clean = fmt("clean", 720, 1280, has_watermark=False)
     unknown = fmt("unknown", 1080, 1920, has_watermark=None)
     watermarked = fmt("wm", 2160, 3840, has_watermark=True)
-    assert select_formats([watermarked, unknown, clean], preference="prefer_clean").video == clean
+    assert select_formats([watermarked, unknown, clean]).video == clean
     with pytest.raises(VideoUnavailableError):
         select_formats([watermarked, unknown])
     with pytest.raises(VideoUnavailableError):

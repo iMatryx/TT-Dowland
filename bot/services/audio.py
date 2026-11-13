@@ -13,7 +13,7 @@ from bot.utils.process import run_process
 
 @scoped
 async def extract_audio(source: Path, output: Path, *, max_bytes: int, timeout: float,
-                        quality: str = 'high', full_decode: bool = False, conversions: ConversionLimiter | None = None):
+                        full_decode: bool = False, conversions: ConversionLimiter | None = None):
     require_media_tools()
     try:
         async with asyncio.timeout(timeout), (conversions or ConversionLimiter()).slot():

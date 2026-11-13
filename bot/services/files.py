@@ -98,7 +98,7 @@ class FileCleaner:
                 return count
             threshold = time.time() - (0 if recovery else self.max_age)
             for path in self.root.iterdir():
-                if not path.name.startswith((".tiktok-", ".analysis-", "tiktok-")) or path.is_symlink():
+                if not path.name.startswith((".tiktok-", ".analysis-", ".preview-", "tiktok-")) or path.is_symlink():
                     continue
                 try:
                     if self.registry.remove_abandoned(path, threshold=threshold):

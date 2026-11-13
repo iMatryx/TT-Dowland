@@ -13,7 +13,7 @@ def variants():
 def test_only_highest_clean_native_variant_is_selected():
     assert select_formats(variants()).video.format_id == 'clean-high'
     for quality in ('low', 'bogus'):
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError):
             select_formats(variants(), quality=quality)
 
 
@@ -26,30 +26,6 @@ def test_watermarked_or_unknown_source_is_unavailable():
     from bot.models.exceptions import SourceVariantUnavailableError
     with pytest.raises(SourceVariantUnavailableError):
         select_formats(variants()[2:])
-
-
-def test_legacy_preferences_migrate_to_independent_settings():
-    from bot.models.preferences import UserPreferences
-    old = UserPreferences.model_validate({'quality': 'prefer_clean', 'video_as_document': True,
-                                          'photo_mode': 'zip', 'ask_each_time': False})
-    assert old.quality == 'high' and old.watermark == 'without'
-    assert old.model_dump() == {'quality': 'high', 'watermark': 'without'}
-    assert UserPreferences.model_validate({'quality': 'maximum'}).watermark == 'without'
-
-
-def test_preferences_keyboard_has_no_delivery_or_auto_controls():
-    from bot.handlers.keyboards import preferences_keyboard, download_keyboard
-    from bot.models.preferences import UserPreferences
-    from bot.models import VideoInfo
-    keys = preferences_keyboard(11, UserPreferences())
-    values = [b.callback_data for row in keys.inline_keyboard for b in row]
-    assert not any(':quality:' in v for v in values)
-    assert not any(':watermark:' in v for v in values)
-    assert not any('ask_each_time' in v or 'photo_mode' in v or 'video_as_document' in v for v in values)
-    info = VideoInfo(id='123', webpage_url='https://www.tiktok.com/@a/video/123', formats=variants())
-    keyboard = download_keyboard('key', info)
-    modes = [b.callback_data.split(':')[1] for row in keyboard.inline_keyboard for b in row if b.callback_data.startswith('dl:')]
-    assert modes == ['chat', 'file', 'zip', 'audio']
 
 
 def test_photo_variants_preserve_order_and_independent_options():
@@ -68,7 +44,6 @@ def test_photo_variants_preserve_order_and_independent_options():
                 variant.has_watermark = False
     selected = select_photos(info)
     assert [str(p.urls[0]) for p in selected.photos] == ['https://cdn.example/0-high', 'https://cdn.example/1-high']
-
 
 
 @pytest.mark.asyncio

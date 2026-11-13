@@ -11,6 +11,8 @@ services:
       - path: .env
         required: false
     environment:
+      # RestartController exits cleanly with code 75; restart policy relaunches it.
+      RESTART_ENABLED: "true"
       DOWNLOAD_DIR: /app/downloads
       CACHE_DB_PATH: /app/data/cache.sqlite3
     volumes:

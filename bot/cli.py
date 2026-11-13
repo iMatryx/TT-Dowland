@@ -21,10 +21,10 @@ def positive_seconds(value: str) -> float:
     return parsed
 
 
-async def download_once(settings: Settings, url: str, *, timeout: float, preference: str):
+async def download_once(settings: Settings, url: str, *, timeout: float):
     engine = TikTokDownloader(settings, timeout=timeout)
     try:
-        return await engine.download(url, preference=preference)
+        return await engine.download(url)
     finally:
         await engine.close()
 
@@ -38,7 +38,7 @@ def main() -> int:
     try:
         settings = Settings()
         configure_logging(settings.log_level)
-        result = asyncio.run(download_once(settings, args.url, timeout=args.timeout, preference="clean"))
+        result = asyncio.run(download_once(settings, args.url, timeout=args.timeout))
     except ValidationError:
         print("Configuration is invalid; check environment settings.", file=sys.stderr)
         return 2

@@ -268,3 +268,15 @@ async def test_cancelled_queued_request_releases_admission_without_overfilling_q
     finally:
         release.set()
         await queue.close()
+
+
+def test_default_user_limit_allows_ten_requests_per_minute():
+    from bot.config import Settings
+    assert Settings().user_requests_per_minute == 10
+    limiter = UserLimiter(cooldown=0, clock=lambda: 0)
+    for _ in range(10):
+        limiter.acquire(1)
+        limiter.release(1)
+    with pytest.raises(RateLimitedError) as error:
+        limiter.acquire(1)
+    assert error.value.retry_after == 60

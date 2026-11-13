@@ -1,0 +1,43 @@
+"""Menu and onboarding translations; source strings are Romanian."""
+CORE = {
+    '📥 Descarcă video': {'ru': '📥 Скачать видео', 'en': '📥 Download video'},
+    '❓ Cum folosesc botul': {'ru': '❓ Как пользоваться ботом', 'en': '❓ How to use the bot'},
+    'ℹ️ Limite și calitate': {'ru': 'ℹ️ Лимиты и качество', 'en': 'ℹ️ Limits and quality'},
+    'TikTok, YouTube Shorts sau Instagram Reels…': {'ru': 'TikTok, YouTube Shorts или Instagram Reels…', 'en': 'TikTok, YouTube Shorts or Instagram Reels…'},
+    '📁 Ca fișier': {'ru': '📁 Как файл', 'en': '📁 As a file'},
+    '💬 În chat': {'ru': '💬 В чате', 'en': '💬 In chat'},
+    '📁 Ca fișier original': {'ru': '📁 Оригинальный файл', 'en': '📁 Original file'},
+    '🗜 Ca ZIP': {'ru': '🗜 В ZIP', 'en': '🗜 As ZIP'},
+    '🎵 Doar audio': {'ru': '🎵 Только аудио', 'en': '🎵 Audio only'},
+    '🙈 Ascunde info': {'ru': '🙈 Скрыть сведения', 'en': '🙈 Hide info'},
+    'ℹ️ Info': {'ru': 'ℹ️ Сведения', 'en': 'ℹ️ Info'},
+    'ℹ️ Info foto': {'ru': 'ℹ️ О фото', 'en': 'ℹ️ Photo info'},
+    'ℹ️ Info video': {'ru': 'ℹ️ О видео', 'en': 'ℹ️ Video info'},
+    '❌ Anulează': {'ru': '❌ Отменить', 'en': '❌ Cancel'},
+    '🎬 <b>TikTok Ultra Downloader</b>\n\nTrimite un link public TikTok, YouTube Shorts sau Instagram Reels. Videoclipul apare automat în chat.': {
+        'ru': '🎬 <b>TikTok Ultra Downloader</b>\n\nОтправьте ссылку на публичный TikTok, YouTube Shorts или Instagram Reels. Видео автоматически появится в чате.',
+        'en': '🎬 <b>TikTok Ultra Downloader</b>\n\nSend a public TikTok, YouTube Shorts or Instagram Reels link. The video will appear in the chat automatically.'},
+    '<b>Cum folosești botul</b>\n\n1. Trimite un link public TikTok, YouTube Shorts sau Instagram Reels.\n2. Videoclipul apare automat în chat.\n3. Alege 📁 Ca fișier pentru original, 🎵 Doar audio pentru sunet sau ℹ️ Info pentru detalii.\n\n📦 Limită per fișier: {limit:g} MB.': {
+        'ru': '<b>Как пользоваться ботом</b>\n\n1. Отправьте ссылку на публичный TikTok, YouTube Shorts или Instagram Reels.\n2. Видео автоматически появится в чате.\n3. Нажмите 📁 Как файл для оригинала, 🎵 Только аудио для звука или ℹ️ Сведения для подробностей.\n\n📦 Лимит на файл: {limit:g} МБ.',
+        'en': '<b>How to use the bot</b>\n\n1. Send a public TikTok, YouTube Shorts or Instagram Reels link.\n2. The video appears in the chat automatically.\n3. Choose 📁 As a file for the original, 🎵 Audio only for sound or ℹ️ Info for details.\n\n📦 File limit: {limit:g} MB.'},
+    '📥 Trimite un link public TikTok (video sau fotografii), YouTube Shorts ori Instagram Reels.': {
+        'ru': '📥 Отправьте ссылку на публичный TikTok (видео или фото), YouTube Shorts или Instagram Reels.',
+        'en': '📥 Send a public TikTok (video or photos), YouTube Shorts or Instagram Reels link.'},
+    'ℹ️ <b>Limite și calitate</b>\n\n📦 Maximum {limit:g} MB per fișier.\n⏱ Maximum {requests} cereri pe minut.\n💎 Cea mai bună calitate disponibilă la sursă.\n💧 Doar variante identificate fără watermark.\n🔒 Doar postări publice.': {
+        'ru': 'ℹ️ <b>Лимиты и качество</b>\n\n📦 До {limit:g} МБ на файл.\n⏱ До {requests} запросов в минуту.\n💎 Лучшее доступное качество источника.\n💧 Только варианты, отмеченные источником как без водяного знака.\n🔒 Только публичные публикации.',
+        'en': 'ℹ️ <b>Limits and quality</b>\n\n📦 Up to {limit:g} MB per file.\n⏱ Up to {requests} requests per minute.\n💎 Best quality available from the source.\n💧 Only variants identified as watermark-free.\n🔒 Public posts only.'},
+    'Pornește botul și alege limba': {'ru': 'Запустить бота и выбрать язык', 'en': 'Start the bot and choose a language'},
+    'Schimbă limba': {'ru': 'Сменить язык', 'en': 'Change language'},
+    'Cum folosești botul': {'ru': 'Как пользоваться ботом', 'en': 'How to use the bot'},
+    'Deschide meniul principal': {'ru': 'Открыть главное меню', 'en': 'Open the main menu'},
+    'Anulează cererile în așteptare': {'ru': 'Отменить ожидающие запросы', 'en': 'Cancel pending requests'},
+    '🔒 Această comandă este disponibilă doar administratorului, în chat privat.': {'ru': '🔒 Эта команда доступна только администратору в личном чате.', 'en': '🔒 This command is only available to the administrator in a private chat.'},
+    'Repornirea este dezactivată. Administratorul trebuie să configureze supervisorul pe server.': {'ru': 'Перезапуск отключён. Администратору нужно настроить supervisor на сервере.', 'en': 'Restart is disabled. The administrator must configure a supervisor on the server.'},
+    'Repornirea este deja în curs sau indisponibilă.': {'ru': 'Перезапуск уже выполняется или недоступен.', 'en': 'Restart is already in progress or unavailable.'},
+    '🔄 Confirmă restart': {'ru': '🔄 Подтвердить перезапуск', 'en': '🔄 Confirm restart'},
+    '🔄 Repornești botul pentru toți utilizatorii? Operațiile neterminate pot fi întrerupte. Confirmarea expiră în 60 de secunde.': {'ru': '🔄 Перезапустить бота для всех пользователей? Незавершённые операции могут быть прерваны. Подтверждение действует 60 секунд.', 'en': '🔄 Restart the bot for all users? Unfinished operations may be interrupted. Confirmation expires in 60 seconds.'},
+    'Confirmare invalidă, expirată sau neautorizată.': {'ru': 'Подтверждение недействительно, просрочено или не разрешено.', 'en': 'Confirmation is invalid, expired or unauthorized.'},
+    'Restart anulat.': {'ru': 'Перезапуск отменён.', 'en': 'Restart canceled.'},
+    '🔄 Botul se închide controlat și va fi repornit de supervisor.': {'ru': '🔄 Бот корректно завершает работу и будет перезапущен supervisor.', 'en': '🔄 The bot is shutting down gracefully and will be restarted by the supervisor.'},
+    'Repornește botul (administrator)': {'ru': 'Перезапустить бота (администратор)', 'en': 'Restart the bot (administrator)'},
+}

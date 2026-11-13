@@ -16,15 +16,17 @@ format de pixeli, container, pachete, dimensiuni și durată. Datele extractorul
 nu decid singure compatibilitatea. Un MP4 verificat cu H.264 și AAC (sau fără
 sunet), în format de pixeli `yuv420p`/`yuvj420p`, poate fi trimis direct.
 
-Toate cererile folosesc `quality="high"`, `watermark="without"`. Se alege cea
+Politica este fixă pentru toate cererile: calitate maximă fără watermark. Se alege cea
 mai bună variantă identificată fără watermark, comparând rezoluția (latura scurtă,
 apoi suprafața), FPS și bitrate raportate. Variantele cu statut necunoscut sau
 cu watermark nu sunt fallback-uri. Dacă sursa nu oferă o variantă eligibilă,
 botul explică indisponibilitatea; audio rămâne separat. Nu se elimină artificial
 marcaje și nu se garantează vizual metadatele sursei.
 
-Setările vechi sunt normalizate la politica fixă. Meniul nu mai permite alegerea
-calității sau watermark-ului, iar CLI-ul nu mai are argumentul `--quality`.
+Meniul Preferințe, comanda `/settings`, modelul și API-urile preferințelor au fost
+eliminate. Vechea tabelă `user_preferences` este eliminată la deschiderea SQLite,
+fără a șterge cache-ul media sau detaliile Info. Pipeline-ul și CLI-ul nu acceptă
+argumente pentru alegerea calității sau watermark-ului.
 Audio selectează sursa cea mai bună și este livrat ca MP3 de 192 kbps.
 Nu se inventează rezoluții și nu se face upscaling.
 

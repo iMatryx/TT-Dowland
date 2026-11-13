@@ -103,14 +103,13 @@ async def test_video_arrives_automatically_then_file_on_demand(menu_app, tmp_pat
     expanded = next(c for c in reversed(menu_app.calls) if isinstance(c, EditMessageCaption))
     assert expanded.reply_markup.inline_keyboard[0][0].callback_data == row[0].callback_data
     assert expanded.reply_markup.inline_keyboard[0][1].callback_data == 'mi:hide'
-    await menu_app.dispatcher['preferences'].update_preferences(11, quality='low')
     await menu_app.dispatcher.feed_update(menu_app.bot, Update.model_validate({'update_id': 3, 'callback_query': {
         'id': 'file', 'from': {'id': 11, 'is_bot': False, 'first_name': 'Test'},
         'chat_instance': 'test', 'data': row[0].callback_data, 'message': message,
     }}), download_service=menu_app.service)
     assert sum(isinstance(c, SendVideo) for c in menu_app.calls) == 1
     assert sum(isinstance(c, SendDocument) for c in menu_app.calls) == 1
-    assert menu_app.service.download.call_args.kwargs['quality'] == 'high'
+    assert menu_app.service.download.call_args.kwargs == {}
     assert not any(path.exists() for path in paths)
 
 

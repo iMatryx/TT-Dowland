@@ -22,7 +22,7 @@ async def setup_runtime(tmp_path: Path):
     info = VideoInfo(id="123", webpage_url="https://www.tiktok.com/@author/video/123", formats=[source])
     created = []
 
-    async def download(url, *, preference="prefer_clean"):
+    async def download(url):
         path = runtime.work_dir / f"tiktok-{len(created)}.mp4"
         path.write_bytes(b"original")
         created.append(path)
@@ -51,7 +51,7 @@ async def deliver(state, chat, mode="document"):
 async def test_audio_cache_is_reused_without_satisfying_video_requests(setup_runtime):
     state = setup_runtime
     original_download = state.service.download.side_effect
-    async def download(url, *, audio_only=False, quality='high', **kwargs):
+    async def download(url, *, audio_only=False, **kwargs):
         if not audio_only:
             return await original_download(url, **kwargs)
         path = state.runtime.work_dir / 'sound.mp3'
@@ -87,7 +87,7 @@ async def test_automatic_video_cache_hit_binds_new_controls_to_recipient(setup_r
     from bot.services.telegram_download import PendingRequests
     state = setup_runtime
     pending = PendingRequests()
-    sender = TelegramSender(details=state.runtime.preferences, pending=pending)
+    sender = TelegramSender(details=state.runtime.media_details, pending=pending)
     async def video(**kwargs):
         return Message(message_id=30 + kwargs['chat_id'], date=datetime.now(timezone.utc),
             chat=Chat(id=kwargs['chat_id'], type='private'),
@@ -271,10 +271,10 @@ async def test_cancelling_one_destination_does_not_upload_to_it_or_cancel_follow
     original = state.service.download.side_effect
     status_count = 0
 
-    async def download(url, *, preference="prefer_clean"):
+    async def download(url):
         started.set()
         await release.wait()
-        return await original(url, preference=preference)
+        return await original(url)
 
     async def status(text):
         nonlocal status_count
@@ -305,20 +305,20 @@ async def test_cancelling_one_destination_does_not_upload_to_it_or_cancel_follow
 
 
 @pytest.mark.asyncio
-async def test_clean_document_preference_uses_clean_selection_and_original_cache(setup_runtime):
+async def test_document_uses_clean_selection_and_original_cache(setup_runtime):
     state = setup_runtime
     state.info.formats[0].has_watermark = False
     state.info.formats.append(VideoFormat(format_id='higher-watermarked', ext='mp4',
         width=2160, height=3840, has_watermark=True, has_audio=True))
-    await deliver(state, 1, 'clean_document')
-    assert state.service.download.call_args.kwargs['preference'] == 'clean'
+    await deliver(state, 1, 'document')
+    assert state.service.download.call_args.kwargs == {}
     state.bot.send_video.assert_not_awaited()
-    await deliver(state, 2, 'clean_document')
+    await deliver(state, 2, 'document')
     state.service.download.assert_awaited_once()
     assert state.bot.send_document.call_args.kwargs['document'] == 'document-id'
     await deliver(state, 3, 'document')
     state.service.download.assert_awaited_once()
-    assert state.service.download.call_args.kwargs['preference'] == 'clean'
+    assert state.service.download.call_args.kwargs == {}
 
 
 async def test_telegram_cache_counts_logical_lookups_and_uploads(setup_runtime, caplog):

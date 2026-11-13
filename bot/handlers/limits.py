@@ -30,8 +30,12 @@ class AdmissionMiddleware(BaseMiddleware):
         try:
             if self.runtime.closing:
                 raise QueueFullError("Service is stopping")
-            self.runtime.limiter.acquire(actor.id)
-            acquired = True
+            from bot.handlers.admin import valid_confirmation
+            restart = data.get('restart_controller')
+            admin_confirmation = isinstance(incoming, CallbackQuery) and restart is not None and valid_confirmation(incoming, restart)
+            if not data.get('language_selection') and not admin_confirmation:
+                self.runtime.limiter.acquire(actor.id)
+                acquired = True
             self.runtime.handlers.add(task)
             return await handler(event, data)
         except (RateLimitedError, QueueFullError) as exc:
@@ -48,4 +52,4 @@ class AdmissionMiddleware(BaseMiddleware):
         finally:
             if acquired:
                 self.runtime.limiter.release(actor.id)
-                self.runtime.handlers.discard(task)
+            self.runtime.handlers.discard(task)

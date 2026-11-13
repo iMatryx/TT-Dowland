@@ -43,6 +43,7 @@ class TikTokDownloader:
         self.extractor = CachedExtractor(
             extractor or YtdlpExtractor(timeout=min(timeout, 60)), root=settings.download_dir.expanduser().resolve(),
             ttl=settings.analysis_cache_ttl_seconds, capacity=settings.analysis_cache_capacity,
+            max_bytes=settings.analysis_cache_max_mb * 1024 * 1024,
             enabled=settings.cache_enabled, concurrency=settings.max_concurrent_downloads,
             max_pending=settings.max_pending_requests, registry=registry)
         self.timeout = timeout
@@ -52,9 +53,8 @@ class TikTokDownloader:
         self._semaphore = asyncio.Semaphore(settings.max_concurrent_downloads)
 
     @scoped
-    async def download(self, url: str, *, preference: str = "clean", quality: str = "high", watermark: str | None = None, audio_only: bool = False) -> DownloadResult:
+    async def download(self, url: str, *, audio_only: bool = False) -> DownloadResult:
         """Download one public video; clean partial files on every failure/cancel."""
-        quality, watermark = "high", "without"
         try:
             async with asyncio.timeout(self.timeout):
                 async with queued_slot(self._semaphore, queue="download"):
@@ -66,8 +66,7 @@ class TikTokDownloader:
                                 canonical = await resolve_url(url, client)
                     for attempt in range(2):
                         try:
-                            result = await self._download(canonical, preference=preference, quality=quality,
-                                                          watermark=watermark, audio_only=audio_only)
+                            result = await self._download(canonical, audio_only=audio_only)
                             break
                         except CachedExtractionError as exc:
                             self.extractor.invalidate(canonical, exc.token)
@@ -75,7 +74,7 @@ class TikTokDownloader:
                                 raise exc.error from exc
                 # No download permit is held while waiting for or encoding audio.
                 if audio_only:
-                    return await self._convert_audio(result, quality=quality)
+                    return await self._convert_audio(result)
                 return result
         except TimeoutError as exc:
             raise DownloadTimeoutError("Total download deadline exceeded.") from exc
@@ -84,8 +83,7 @@ class TikTokDownloader:
                 raise InsufficientSpaceError("Insufficient disk space.") from exc
             raise ApplicationError("Local filesystem operation failed.") from exc
 
-    async def _download(self, url: str, *, preference: str = "clean", quality: str = "high", watermark: str | None = None, audio_only: bool = False) -> DownloadResult:
-        quality, watermark = "high", "without"
+    async def _download(self, url: str, *, audio_only: bool = False) -> DownloadResult:
         require_media_tools(require_ffmpeg=False)
         base = self.settings.download_dir.expanduser().resolve()
         base.mkdir(parents=True, exist_ok=True)
@@ -100,12 +98,11 @@ class TikTokDownloader:
                 if audio_only:
                     raise CorruptFileError("Audio extraction requires a video post.")
                 from bot.services.photos import download_photos
-                selected = select_photos(extraction.video, quality=quality,
-                                         watermark="without")
+                selected = select_photos(extraction.video)
                 extraction = replace(extraction, video=selected)
                 return await download_photos(extraction, workspace, self.settings, self.timeout)
-            selection = (FormatSelection(select_audio(extraction.video.formats, quality=quality)) if audio_only
-                         else select_formats(extraction.video.formats, preference=preference, quality=quality, watermark=watermark))
+            selection = (FormatSelection(select_audio(extraction.video.formats)) if audio_only
+                         else select_formats(extraction.video.formats))
             if selection.known_size_bytes > limit:
                 raise FileSizeLimitError("Selected original exceeds MAX_FILE_SIZE_MB; no quality reduction attempted.")
             needed = min(selection.estimated_size or limit, limit) * 3 + 1024 * 1024
@@ -174,7 +171,7 @@ class TikTokDownloader:
             return result
 
 
-    async def _convert_audio(self, result: DownloadResult, *, quality: str) -> DownloadResult:
+    async def _convert_audio(self, result: DownloadResult) -> DownloadResult:
         from bot.services.audio import extract_audio
         output = None
         try:
@@ -186,7 +183,7 @@ class TikTokDownloader:
             ):
                 verified = await extract_audio(result.file_path, output,
                     max_bytes=self.settings.max_file_size_mb * 1024 * 1024, timeout=self.timeout,
-                    quality=quality, full_decode=self.settings.verify_full_decode, conversions=self.conversions)
+                    full_decode=self.settings.verify_full_decode, conversions=self.conversions)
                 expected = result.verified_format.duration_seconds if result.verified_format else None
                 if expected and verified.duration_seconds:
                     if abs(expected - verified.duration_seconds) > max(1.0, expected * .05):

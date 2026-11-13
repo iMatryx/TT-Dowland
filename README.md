@@ -37,9 +37,8 @@ Deployment-ul și conectarea reală se fac ulterior, explicit.
    doar pentru fluxuri incompatibile sau dacă remuxarea/verificarea rezultatului eșuează. Documentul original
    rămâne fără conversie și se trimite la apăsarea „Ca fișier”. Butoanele cunoscute
    ca prea mari sunt ascunse.
-4. Foto: toate imaginile se descarcă în ordinea postării. Se aplică preferințele de calitate și
-   watermark; implicit se alege rezoluția maximă raportată, cu preferință pentru
-   lipsa watermark-ului la egalitate.
+4. Foto: toate imaginile se descarcă în ordinea postării. Se alege rezoluția maximă raportată
+   dintre variantele identificate fără watermark.
    URL-urile alternative ale aceleiași imagini sunt încercate la erori de rețea.
    Lipsa unei imagini oprește întreaga descărcare, fără a publica un album incomplet.
 5. Utilizatorul poate alege fișiere originale, album foto sau ZIP original.
@@ -55,7 +54,7 @@ Deployment-ul și conectarea reală se fac ulterior, explicit.
 7. **🎵 Doar audio** este disponibil pentru video, cu excepția surselor despre
    care se știe că nu au sunet. Se preferă un flux audio separat; altfel se extrage
    pista din video. MP3: 192 kbps,
-   fără promisiunea îmbunătățirii sursei. Preferința de watermark nu afectează audio.
+   fără promisiunea îmbunătățirii sursei. Politica de watermark nu afectează audio.
    Rezultatul este verificat cu ffprobe, limitat ca dimensiune și trimis prin
    `sendAudio`; fișierele temporare sunt șterse. Cache-ul audio este separat de
    video/document/ZIP și include URL-ul platformei în identitatea selecției.
@@ -106,7 +105,7 @@ Handlerele orchestrează servicii, fără cod de extracție în Telegram. Protoc
 adaptorului yt-dlp. Nu sunt folosite API-uri terțe fictive sau servicii plătite.
 
 Runtime-ul are implicit 3 descărcări simultane, o conversie și maximum 35 de
-livrări admise, cu o coadă separată pentru analize; are 5 cereri/utilizator/minut,
+livrări admise, cu o coadă separată pentru analize; are 10 cereri/utilizator/minut,
 cooldown de 2 secunde și o operație activă/utilizator. Cererile duplicate împart
 fișierul local; conversațiile și tipurile de livrare rămân izolate. Cache-ul
 păstrează bot/video/URL/calitate/tip/file_id/dimensiune/data și metadate tehnice,
@@ -159,6 +158,8 @@ chmod 600 .env
 
 | Variabilă | Implicit | Semnificație |
 | --- | --- | --- |
+| `ADMIN_USER_IDS` | gol | ID-uri numerice administrator, separate prin virgulă; numai în `.env` local |
+| `RESTART_ENABLED` | false | permite oprirea pentru restart doar cu supervisor configurat |
 | `BOT_TOKEN` | gol | necesar numai pentru long polling real |
 | `DOWNLOAD_DIR` | downloads | CLI salvează aici; botul folosește subdirectorul bot-work |
 | `MAX_FILE_SIZE_MB` | 50 | limită locală MiB per video / total fotografii; senderul limitează separat uploadul |
@@ -168,7 +169,7 @@ chmod 600 .env
 | `MAX_CONCURRENT_DOWNLOADS` | 3 | descărcări active; analizele au separat aceeași limită |
 | `MAX_CONCURRENT_CONVERSIONS` | 1 | pregătiri video (remux/recodare) și conversii MP3 simultane, independent de descărcări |
 | `MAX_PENDING_REQUESTS` | 32 | așteptări pentru analiză; împreună cu limita descărcărilor, plafonează livrările admise |
-| `USER_REQUESTS_PER_MINUTE` | 5 | limită per utilizator |
+| `USER_REQUESTS_PER_MINUTE` | 10 | limită per utilizator |
 | `USER_COOLDOWN_SECONDS` | 2 | cooldown |
 | `MAX_USER_OPERATIONS` | 1 | operații active per utilizator |
 | `OPERATION_TIMEOUT_SECONDS` | 300 | deadline total, inclusiv așteptarea |
@@ -177,6 +178,7 @@ chmod 600 .env
 | `CACHE_ENABLED` | true | cache de analiză în memorie și cache Telegram SQLite |
 | `ANALYSIS_CACHE_TTL_SECONDS` | 300 | TTL fix al snapshoturilor de analiză, în secunde |
 | `ANALYSIS_CACHE_CAPACITY` | 512 | maximum de snapshoturi LRU în memorie |
+| `ANALYSIS_CACHE_MAX_MB` | 64 | buget MiB al snapshoturilor reținute după serializare |
 | `CACHE_DB_PATH` | data/cache.sqlite3 | cale SQLite persistentă |
 | `CACHE_TTL_SECONDS` | 604800 | retenție cache |
 | `CLEANUP_INTERVAL_SECONDS` | 300 | interval curățare |
@@ -245,11 +247,36 @@ fără procente inventate. Butoanele sunt legate de utilizator/chat/mesaj și ex
 în 10 minute sau după restart. Fără token, pornirea normală se închide cu eroare
 clară; nu încearcă o conexiune reală. Nu este folosit webhook, domeniu sau HTTPS inbound.
 
-## Meniu permanent și preferințe
+## Protecția resurselor
 
-După `/start` sau `/menu`, tastatura de jos oferă **📥 Descarcă video**,
-**⚙️ Preferințe**, **❓ Cum folosesc botul** și **ℹ️ Limite și calitate**.
-Poți trimite și direct un link. `/settings` deschide preferințele.
+Retry-urile Telegram sunt izolate pe chat/metodă, iar ieșirea cumulată stdout/stderr
+a fiecărui proces este limitată implicit la 4 MiB. Cache-ul de analiză are un
+buget implicit de 64 MiB, separat de numărul de intrări. Preview-urile abandonate
+se curăță la recuperare; directoarele preview și ZIP active rămân protejate.
+Detalii și limite: [corecțiile auditului local](docs/security-hardening.md).
+
+## Administrarea repornirii
+
+`/restart` cere confirmare și este permis doar ID-urilor din `ADMIN_USER_IDS`,
+în chat privat. Lista este goală implicit și se completează numai în `.env` local,
+ignorat de Git. `RESTART_ENABLED=false` protejează rulările fără supervisor;
+Docker Compose îl activează pentru politica sa existentă de repornire.
+Botul se închide controlat și iese cu codul 75, iar supervisorul îl pornește din
+nou. Nu execută comenzi shell și nu deschide un port de administrare.
+Detalii: [repornire și securitate](docs/admin-restart.md).
+
+## Meniu permanent și livrare
+
+La primul mesaj și la fiecare `/start`, utilizatorul alege **Română**, **Русский**
+sau **English**. Limba se salvează per utilizator și rămâne după repornire, inclusiv
+cu `CACHE_ENABLED=false`. Un nou `/start` sau comanda `/language` permite schimbarea limbii; `/menu`
+păstrează limba curentă. Mesajele, butoanele, erorile și detaliile Info noi sunt
+traduse; titlurile și autorii sursei rămân neschimbați.
+Vezi [limbile interfeței](docs/languages.md).
+
+După alegere, meniul oferă **📥 Descarcă video**, **❓ Cum folosesc botul** și
+**ℹ️ Limite și calitate**, traduse în limba aleasă. Poți trimite și direct un link.
+Nu există setări de calitate per utilizator.
 
 La un link video, botul trimite automat videoclipul redabil în chat, cu titlul
 drept caption. Sub el, **📁 Ca fișier** și **ℹ️ Info** apar pe același rând.
@@ -275,23 +302,21 @@ nou de stare este creat doar dacă Telegram confirmă că originalul nu mai poat
 fi editat. Videoclipul, fișierul sau audio-ul livrat are propriul buton Info.
 
 Politica sursei este fixă: calitate maximă și numai variante identificate fără
-watermark. Meniul ⚙️ Preferințe explică politica și nu mai oferă comutatoare.
-Setările vechi sunt normalizate la `high` / `without` la citire, iar butoanele
-vechi nu pot reactiva calitatea redusă sau variante cu watermark. Documentele,
+watermark. Nu există buton Preferințe, comandă `/settings`, model de preferințe
+sau argumente pentru schimbarea calității/watermark-ului în pipeline. Documentele,
 ZIP și preview-urile rămân separate. Lipsa watermark-ului este evaluată din
 metadatele sursei, fără verificare vizuală sau ștergerea artificială a marcajelor.
 
 Video-urile sunt trimise automat folosind politica fixă de calitate și watermark;
-fotografiile cer alegerea livrării. Dacă alegerea salvată depășește limitele
+fotografiile cer alegerea livrării. Dacă varianta selectată depășește limitele
 cunoscute, botul afișează opțiunile încă disponibile sau explică limita.
 **❌ Anulează** închide alegerea în așteptare; `/cancel` închide toate alegerile
 inactive ale utilizatorului din chatul curent. Nu întrerupe trimiterile deja începute.
 
-Preferințele funcționează și cu `CACHE_ENABLED=false`. Tabela separată
-`user_preferences` din `CACHE_DB_PATH` păstrează ID-ul Telegram al utilizatorului
-și setările, fără linkuri, istoricul descărcărilor sau ID-uri de chat. Resetarea din
-API restabilește aceeași politică fixă. Butoanele altui utilizator nu îi pot modifica
-preferințele și nu pot anula cererile sale.
+La deschiderea bazei SQLite, vechea tabelă `user_preferences` este eliminată.
+Cache-ul media și informațiile pentru butonul Info se păstrează. Informațiile
+media funcționează și cu `CACHE_ENABLED=false`. Butoanele de livrare rămân legate
+de utilizatorul și mesajul care le-au creat.
 
 ## Info video / foto, fără retrimiterea fișierului
 

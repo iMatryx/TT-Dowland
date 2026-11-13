@@ -175,7 +175,7 @@ async def test_published_download_keeps_bound_verification(engine):
 
 
 @pytest.mark.parametrize('clean_available', [True, False])
-async def test_download_enforces_fixed_policy_even_for_legacy_arguments(engine, monkeypatch, clean_available):
+async def test_download_enforces_fixed_source_policy(engine, monkeypatch, clean_available):
     from bot.models.exceptions import SourceVariantUnavailableError
     source_extract = engine.extractor.source.extract
     async def extract(url, workspace):
@@ -191,10 +191,10 @@ async def test_download_enforces_fixed_policy_even_for_legacy_arguments(engine, 
     monkeypatch.setattr(engine.extractor.source, 'extract', extract)
     if not clean_available:
         with pytest.raises(SourceVariantUnavailableError):
-            await engine.download(URL, quality='low', watermark='any', preference='maximum')
+            await engine.download(URL)
         assert not list(engine.settings.download_dir.iterdir())
     else:
-        result = await engine.download(URL, quality='low', watermark='any', preference='maximum')
+        result = await engine.download(URL)
         try:
             assert result.format.format_id == 'play' and result.format.has_watermark is False
             assert result.format.width == 1080

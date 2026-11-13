@@ -221,7 +221,7 @@ async def test_audio_conversion_wait_releases_download_slot(h264_source, tmp_pat
     async def extract(url, workspace):
         info_path = workspace / 'info.json'
         info_path.write_text('{}')
-        return Extraction(VideoInfo(id='123', webpage_url=url, formats=[VideoFormat(has_watermark=False, 
+        return Extraction(VideoInfo(id='123', webpage_url=url, formats=[VideoFormat(has_watermark=False,
             format_id='source', ext='mkv', has_video=True, has_audio=True)]), info_path)
     async def worker(action, payload, timeout):
         job = json.loads(payload.read_text())
@@ -351,7 +351,7 @@ async def test_configured_conversion_limit_allows_two_jobs_and_blocks_third():
     finally:
         release.set()
         await asyncio.gather(*tasks, return_exceptions=True)
-        await dispatcher['preferences'].close()
+        await dispatcher['media_details'].close()
 
 
 async def test_source_is_protected_from_cleaner_while_waiting_for_audio_conversion(h264_source, tmp_path):
@@ -372,7 +372,7 @@ async def test_source_is_protected_from_cleaner_while_waiting_for_audio_conversi
     task = None
     try:
         async with limiter.slot():
-            task = asyncio.create_task(engine._convert_audio(raw, quality='high'))
+            task = asyncio.create_task(engine._convert_audio(raw))
             await asyncio.sleep(0)
             assert await FileCleaner(tmp_path, registry, max_age=0).sweep() == 0
             assert source.exists()

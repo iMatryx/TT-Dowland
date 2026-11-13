@@ -5,6 +5,7 @@ from collections import OrderedDict
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 import json
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -25,6 +26,13 @@ class _Snapshot:
     video: str = field(repr=False)
     info: str = field(repr=False)
     token: str
+    storage_bytes: int = field(init=False)
+
+    def __post_init__(self):
+        # Account for the actual retained Python strings after serialization,
+        # including ASCII escaping expansion, plus a conservative object reserve.
+        object.__setattr__(self, 'storage_bytes', sum(sys.getsizeof(value)
+                           for value in (self.video, self.info, self.token)) + 512)
 
 
 @dataclass
@@ -46,11 +54,14 @@ def _portable(value):
 class CachedExtractor:
     def __init__(self, source: Extractor, *, root: Path, ttl: float = 300, capacity: int = 512,
                  enabled: bool = True, concurrency: int = 3, max_pending: int = 32,
+                 max_bytes: int = 64 * 1024 * 1024,
                  registry: FileRegistry | None = None, clock=time.monotonic) -> None:
-        if ttl <= 0 or capacity < 1 or concurrency < 1 or max_pending < 0:
+        if ttl <= 0 or capacity < 1 or concurrency < 1 or max_pending < 0 or max_bytes < 1:
             raise ValueError('Invalid analysis cache limits')
         self.source, self.root, self.registry = source, root, registry
         self.ttl, self.capacity, self.enabled, self.clock = ttl, capacity, enabled, clock
+        self.max_bytes = max_bytes
+        self._cached_bytes = 0
         self.metrics = CacheMetrics('metadata')
         self._items: OrderedDict[str, tuple[float, _Snapshot]] = OrderedDict()
         self._loads: dict[str, _Load] = {}
@@ -58,16 +69,31 @@ class CachedExtractor:
         self._max_loads = concurrency + max_pending
         self._closed = False
 
+    @property
+    def cached_bytes(self) -> int:
+        return self._cached_bytes
+
+    @staticmethod
+    def _weight(key: str, snapshot: _Snapshot) -> int:
+        return snapshot.storage_bytes + sys.getsizeof(key) + 256
+
+    def _drop(self, key: str) -> None:
+        item = self._items.pop(key, None)
+        if item is not None:
+            self._cached_bytes -= self._weight(key, item[1])
+
     def invalidate(self, url: str, token: str | None) -> None:
         key = normalize_url(url)
         item = self._items.get(key)
         # A late failure must not delete the replacement loaded by another caller.
         if item is not None and item[1].token == token:
-            del self._items[key]
+            self._drop(key)
 
     async def _snapshot(self, url: str) -> tuple[_Snapshot, bool]:
         now = self.clock()
-        self._items = OrderedDict((key, item) for key, item in self._items.items() if item[0] > now)
+        for key, (expires, _) in list(self._items.items()):
+            if expires <= now:
+                self._drop(key)
         item = self._items.get(url) if self.enabled else None
         if self.enabled:
             self.metrics.record(item is not None)
@@ -90,11 +116,16 @@ class CachedExtractor:
                     snapshot = _Snapshot(extraction.video.model_dump_json(), json.dumps(_portable(data)), uuid4().hex)
                 except (ValueError, TypeError, RecursionError) as exc:
                     raise VideoUnavailableError('Malformed extractor metadata.') from exc
-        if self.enabled and not self._closed:
+        weight = self._weight(url, snapshot)
+        if self.enabled and not self._closed and weight <= self.max_bytes:
+            self._drop(url)
+            while self._items and (len(self._items) >= self.capacity
+                                   or self._cached_bytes + weight > self.max_bytes):
+                self._drop(next(iter(self._items)))
             self._items[url] = (self.clock() + self.ttl, snapshot)
-            self._items.move_to_end(url)
-            while len(self._items) > self.capacity:
-                self._items.popitem(last=False)
+            self._cached_bytes += weight
+        # An individually oversized snapshot can still serve its current
+        # waiters, but is not retained or allowed to flush useful small entries.
         return snapshot, False
 
     @scoped
@@ -134,6 +165,7 @@ class CachedExtractor:
     async def close(self) -> None:
         self._closed = True
         self._items.clear()
+        self._cached_bytes = 0
         tasks = [load.task for load in self._loads.values()]
         for task in tasks:
             task.cancel()

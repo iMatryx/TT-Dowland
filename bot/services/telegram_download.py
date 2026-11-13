@@ -15,7 +15,6 @@ from bot.models import DownloadResult, VideoInfo
 from bot.models.exceptions import ApplicationError, DownloadTimeoutError, FileSizeLimitError, VideoUnavailableError
 from bot.services.downloader import TikTokDownloader
 from bot.services.quality import FormatSelection, select_audio, select_formats
-from bot.models.preferences import UserPreferences
 from bot.services.urls import resolve_url
 from bot.utils.network import public_http_client
 
@@ -29,7 +28,6 @@ class PendingDownload:
     info: VideoInfo
     expires_at: float
     busy: bool = False
-    preferences: UserPreferences | None = None
     delivered: bool = False
 
 
@@ -49,7 +47,7 @@ class PendingRequests:
             if item.expires_at <= now and not item.busy:
                 del self._items[key]
 
-    def add(self, user_id: int, chat_id: int, message_id: int, info: VideoInfo, *, preferences: UserPreferences | None = None, delivered: bool = False) -> PendingDownload:
+    def add(self, user_id: int, chat_id: int, message_id: int, info: VideoInfo, *, delivered: bool = False) -> PendingDownload:
         self._prune()
         if len(self._items) >= self.capacity:
             oldest = next((key for key, item in self._items.items() if not item.busy), None)
@@ -58,7 +56,6 @@ class PendingRequests:
             del self._items[oldest]
         key = secrets.token_urlsafe(12)
         item = PendingDownload(key, user_id, chat_id, message_id, info, self.clock() + self.ttl)
-        item.preferences = preferences
         item.delivered = delivered
         self._items[key] = item
         return item
@@ -121,7 +118,7 @@ class TelegramDownloadService:
             except VideoUnavailableError:
                 pass
             try:
-                selections.append(FormatSelection(select_audio(extraction.video.formats, quality='high')))
+                selections.append(FormatSelection(select_audio(extraction.video.formats)))
             except VideoUnavailableError:
                 pass
             if selections and all(s.known_size_bytes > self.engine.settings.max_file_size_mb * 1024 * 1024
@@ -129,5 +126,5 @@ class TelegramDownloadService:
                 raise FileSizeLimitError("All available originals exceed the local download limit.")
             return extraction.video
 
-    async def download(self, url: str, *, preference: str = "clean", quality: str = "high", watermark: str | None = None, audio_only: bool = False) -> DownloadResult:
-        return await self.engine.download(url, preference=preference, quality=quality, watermark=watermark, audio_only=audio_only)
+    async def download(self, url: str, *, audio_only: bool = False) -> DownloadResult:
+        return await self.engine.download(url, audio_only=audio_only)

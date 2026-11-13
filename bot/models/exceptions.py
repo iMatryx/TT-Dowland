@@ -112,3 +112,7 @@ def classify_error(message: str) -> ApplicationError:
     )):
         return NetworkError("Network failure or service access denied; no bypass attempted.")
     return VideoUnavailableError("Video unavailable or unsupported by the installed extractor.")
+
+
+class ProcessOutputLimitError(ApplicationError):
+    """An external operation exceeded the combined captured output limit."""

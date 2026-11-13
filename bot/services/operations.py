@@ -181,7 +181,7 @@ class _User:
 class UserLimiter:
     """No persistent user data; bounded counters expire after the rate window."""
 
-    def __init__(self, *, requests: int = 5, window: float = 60, cooldown: float = 2,
+    def __init__(self, *, requests: int = 10, window: float = 60, cooldown: float = 2,
                  active_limit: int = 1, clock: Callable[[], float] = time.monotonic,
                  capacity: int = 10000) -> None:
         self.requests, self.window, self.cooldown = requests, window, cooldown

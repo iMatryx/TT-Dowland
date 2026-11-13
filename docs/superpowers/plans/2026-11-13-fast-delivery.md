@@ -34,3 +34,20 @@ so an oversized marked source cannot hide an eligible clean source. Regression
 was reproduced RED and fixed GREEN. Source-selection cache keys still describe
 the chosen format, with distinct original/preview/delivery types. Existing
 lease, identity, TTL, concurrency and security mechanisms are unchanged.
+
+## Follow-up: remove preferences entirely
+
+Removed preferences UI, /settings, callback model/handlers, user preference model,
+SQLite preference APIs and preference arguments/state across source selection,
+download, pending requests and Telegram delivery. SQLite drops the obsolete
+user_preferences table on opening; original media and Info tables remain.
+The Info store is now named media_details and remains available with media cache
+disabled. Removed legacy clean/maximum delivery controls. Source selection is
+unconditionally highest-quality among sources explicitly identified without
+watermark, with no fallback to unknown/watermarked variants.
+
+Validation: 370 offline tests passed, 5 live deselected; obsolete preference tests
+removed and replaced by menu/command/schema-removal and metadata-persistence
+regressions. Offline wiring, compileall, pip check and diff whitespace checks
+passed. Read-only independent review found no important regression. No real bot,
+Telegram messages or deployment performed.

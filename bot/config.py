@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     """Runtime settings for the application."""
 
     bot_token: str | None = Field(default=None, validation_alias="BOT_TOKEN", repr=False)
+    admin_user_ids: str = Field(default="", validation_alias="ADMIN_USER_IDS", repr=False, exclude=True)
+    restart_enabled: bool = Field(default=False, validation_alias="RESTART_ENABLED")
     download_dir: Path = Field(default=Path("downloads"), validation_alias="DOWNLOAD_DIR")
     max_file_size_mb: int = Field(default=50, ge=1, validation_alias="MAX_FILE_SIZE_MB")
     max_retained_originals_mb: int = Field(default=512, ge=0, validation_alias="MAX_RETAINED_ORIGINALS_MB")
@@ -24,10 +26,11 @@ class Settings(BaseSettings):
     cache_enabled: bool = Field(default=True, validation_alias="CACHE_ENABLED")
     analysis_cache_ttl_seconds: float = Field(default=300, gt=0, allow_inf_nan=False, validation_alias="ANALYSIS_CACHE_TTL_SECONDS")
     analysis_cache_capacity: int = Field(default=512, ge=1, le=10000, validation_alias="ANALYSIS_CACHE_CAPACITY")
+    analysis_cache_max_mb: int = Field(default=64, ge=1, validation_alias="ANALYSIS_CACHE_MAX_MB")
     cache_db_path: Path = Field(default=Path("data/cache.sqlite3"), validation_alias="CACHE_DB_PATH")
     cache_ttl_seconds: int = Field(default=604800, ge=1, validation_alias="CACHE_TTL_SECONDS")
     max_pending_requests: int = Field(default=32, ge=1, le=1000, validation_alias="MAX_PENDING_REQUESTS")
-    user_requests_per_minute: int = Field(default=5, ge=1, validation_alias="USER_REQUESTS_PER_MINUTE")
+    user_requests_per_minute: int = Field(default=10, ge=1, validation_alias="USER_REQUESTS_PER_MINUTE")
     user_cooldown_seconds: float = Field(default=2, ge=0, allow_inf_nan=False, validation_alias="USER_COOLDOWN_SECONDS")
     max_user_operations: int = Field(default=1, ge=1, validation_alias="MAX_USER_OPERATIONS")
     operation_timeout_seconds: float = Field(default=300, gt=0, allow_inf_nan=False, validation_alias="OPERATION_TIMEOUT_SECONDS")
@@ -40,6 +43,23 @@ class Settings(BaseSettings):
     telegram_api_base: str | None = Field(default=None, validation_alias="TELEGRAM_API_BASE")
     telegram_local_upload_limit_mb: int = Field(default=2000, ge=1, le=2000,
                                                 validation_alias="TELEGRAM_LOCAL_UPLOAD_LIMIT_MB")
+
+    @field_validator("admin_user_ids", mode="before")
+    @classmethod
+    def validate_admin_ids(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("ADMIN_USER_IDS must contain comma-separated numeric Telegram user IDs")
+        if not value.strip():
+            return ""
+        parts = [part.strip() for part in value.split(',')]
+        if len(parts) > 32 or any(not part.isascii() or not part.isdecimal() or len(part) > 19
+                or not 0 < int(part) < 2**63 for part in parts):
+            raise ValueError("ADMIN_USER_IDS must contain at most 32 positive numeric Telegram user IDs")
+        return ','.join(str(number) for number in sorted({int(part) for part in parts}))
+
+    @property
+    def administrator_ids(self) -> frozenset[int]:
+        return frozenset(int(part) for part in self.admin_user_ids.split(',') if part)
 
     @field_validator("telegram_api_base", mode="before")
     @classmethod

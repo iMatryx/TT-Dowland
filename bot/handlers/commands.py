@@ -2,54 +2,68 @@
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import BotCommand, MenuButtonCommands, Message
+from aiogram.types import BotCommand, BotCommandScopeChat, BotCommandScopeChatMember, Chat, MenuButtonCommands, Message
 
 from bot.config import Settings
 from bot.handlers.keyboards import main_menu
 from bot.services.telegram_sender import TelegramSender
 from bot.utils.telegram_text import START_TEXT
+from bot.services.cache import SQLiteCache
+from bot.utils.i18n import LANGUAGES, language_context, tr
+
+
+def interface_commands(*, include_restart: bool = False) -> list[BotCommand]:
+    commands = [
+        BotCommand(command="start", description=tr("Pornește botul și alege limba")),
+        BotCommand(command="language", description=tr("Schimbă limba")),
+        BotCommand(command="help", description=tr("Cum folosești botul")),
+        BotCommand(command="menu", description=tr("Deschide meniul principal")),
+        BotCommand(command="cancel", description=tr("Anulează cererile în așteptare")),
+    ]
+    if include_restart:
+        commands.append(BotCommand(command='restart', description=tr('Repornește botul (administrator)')))
+    return commands
 
 
 async def register_commands(bot: Bot) -> None:
-    """Publish commands for Telegram's slash suggestions and menu button."""
-    await bot.set_my_commands([
-        BotCommand(command="start", description="Pornește botul și deschide meniul"),
-        BotCommand(command="help", description="Cum folosești botul"),
-        BotCommand(command="menu", description="Deschide meniul principal"),
-        BotCommand(command="settings", description="Preferințe de descărcare"),
-        BotCommand(command="cancel", description="Anulează cererile în așteptare"),
-    ])
+    """Register platform-language fallbacks and replace any obsolete defaults."""
+    for language in LANGUAGES:
+        with language_context(language):
+            await bot.set_my_commands(interface_commands(), language_code=language)
+    with language_context('ro'):
+        await bot.set_my_commands(interface_commands())
     await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
 
-async def start_handler(message: Message) -> None:
-    await message.answer(START_TEXT, parse_mode="HTML", reply_markup=main_menu())
+async def register_selected_commands(bot: Bot, chat: Chat, user_id: int, settings: Settings | None = None) -> None:
+    # A group member's choice must not change other members' command menus.
+    if chat.type == 'private':
+        scope = BotCommandScopeChat(chat_id=chat.id)
+    elif chat.type in {'group', 'supergroup'}:
+        scope = BotCommandScopeChatMember(chat_id=chat.id, user_id=user_id)
+    else:
+        return
+    admin = bool(settings is not None and settings.restart_enabled and user_id in settings.administrator_ids and chat.type == 'private')
+    await bot.set_my_commands(interface_commands(include_restart=admin), scope=scope)
+
+
+async def start_handler(message: Message, language_store: SQLiteCache) -> None:
+    from bot.handlers.language import show_language_choice
+    await show_language_choice(message, language_store)
+
+
+async def welcome_handler(message: Message) -> None:
+    await message.answer(tr(START_TEXT), parse_mode="HTML", reply_markup=main_menu())
 
 
 async def help_handler(message: Message, settings: Settings, sender: TelegramSender) -> None:
     limit = min(settings.max_file_size_mb * 1024 * 1024, sender.policy.max_upload_bytes)
     await message.answer(
-        "<b>Cum folosești botul</b>\n\n"
-        "1. Trimite un link public TikTok, YouTube Shorts sau Instagram Reels. "
-        "Accept și linkuri scurte TikTok și youtu.be.\n"
-        "2. Videoclipul se trimite automat, redabil în chat. Sub el ai "
-        "<b>📁 Ca fișier</b> pentru original și <b>ℹ️ Info</b> pentru detalii. "
-        "Dacă originalul nu este compatibil cu playerul Telegram, creez un MP4 pentru redare; "
-        "varianta ca fișier păstrează originalul, fără conversie.\n\n"
-        "🎵 <b>Doar audio</b>: extrag sunetul videoclipului și îl trimit ca MP3. "
-        "MP3: 192 kbps. Conversia nu îmbunătățește sursa.\n\n"
-        "3. Pentru fotografii TikTok: toate originalele ca fișiere, album foto sau ZIP original. "
-        "Telegram poate comprima albumul foto. Grupurile au maximum 10 elemente; "
-        "imaginile incompatibile sunt trimise ca documente.\n\n"
-        "💎 Aleg cea mai bună variantă disponibilă la sursă, fără upscaling. "
-        "Nu toate videoclipurile există în 4K. Selectez numai variante identificate fără watermark; "
-        "informația este declarată de sursă și nu verificată vizual.\n\n"
-        f"📦 Limita efectivă curentă: <b>{limit / 1_000_000:g} MB</b>. "
-        "Telegram Premium al utilizatorului nu crește limita de upload a botului.\n\n"
-        "🔒 Videoclipurile private, șterse sau restricționate pot fi indisponibile. "
-        "Vei primi o explicație; nu încerc ocolirea restricțiilor.\n\n"
-        "Butoanele expiră după 10 minute și după repornire. "
-        "Poți trimite oricând alt link, fără să repeți /start.",
+        tr("<b>Cum folosești botul</b>\n\n"
+           "1. Trimite un link public TikTok, YouTube Shorts sau Instagram Reels.\n"
+           "2. Videoclipul apare automat în chat.\n"
+           "3. Alege 📁 Ca fișier pentru original, 🎵 Doar audio pentru sunet sau ℹ️ Info pentru detalii.\n\n"
+           "📦 Limită per fișier: {limit:g} MB.", limit=limit / 1_000_000),
         parse_mode="HTML",
         reply_markup=main_menu(),
     )
@@ -59,5 +73,6 @@ def create_router() -> Router:
     router = Router(name="commands")
     router.message.register(start_handler, CommandStart())
     router.message.register(start_handler, F.text.strip().lower() == "start")
+    router.message.register(start_handler, Command("language"))
     router.message.register(help_handler, Command("help"))
     return router

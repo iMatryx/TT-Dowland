@@ -2,6 +2,8 @@
 
 from html import escape
 
+from bot.utils.i18n import tr, localized
+
 from bot.models import VideoFormat, VideoInfo
 from bot.models.exceptions import (
     CorruptFileError, DownloadTimeoutError, FileSizeLimitError, InsufficientSpaceError,
@@ -13,72 +15,61 @@ from bot.models.exceptions import (
 
 START_TEXT = (
     "🎬 <b>TikTok Ultra Downloader</b>\n\n"
-    "Salut! Trimite-mi un link public TikTok, YouTube Shorts sau Instagram Reels. "
-    "Videoclipul apare automat în chat, cu butoanele 📁 Ca fișier și ℹ️ Info dedesubt. "
-    "Accept și fotografii/slideshow TikTok, la cea mai bună calitate disponibilă!\n\n"
-    "✨ Fără watermark, dacă este disponibil\n"
-    "💎 Calitate originală maximă\n⚡ Descărcare rapidă\n📁 Fișier original\n🎵 Doar audio — MP3"
+    "Trimite un link public TikTok, YouTube Shorts sau Instagram Reels. "
+    "Videoclipul apare automat în chat."
 )
 
 
+@localized
 def video_details(info: VideoInfo, verified: VideoFormat | None,
                   source: VideoFormat | None, size: int | None = None) -> str:
     if info.media_type == "photo":
-        dimensions = list(dict.fromkeys(f"{p.width} × {p.height}" for p in info.photos if p.width and p.height))
-        return (f"🖼 <b>{escape((info.title or 'Fotografii TikTok')[:160])}</b>\n"
-                f"{len(info.photos)} fotografii, în ordinea originală.\n"
-                f"Rezoluții raportate de sursă: {', '.join(dimensions[:8]) or 'necunoscute'}.\n"
-                "Dimensiunile se verifică după descărcare. Albumul foto poate fi comprimat de Telegram; "
-                "fișierele și ZIP păstrează originalele.\n"
-                "Watermark: variante originale preferate; absența nu este verificată vizual.")
+        dimensions = list(dict.fromkeys(f'{p.width} × {p.height}' for p in info.photos if p.width and p.height))
+        return (tr('🖼 <b>{value0}</b>\n{value1} fotografii, în ordinea originală.\nRezoluții raportate de sursă: {value2}.\nDimensiunile se verifică după descărcare. Albumul foto poate fi comprimat de Telegram; fișierele și ZIP păstrează originalele.\nWatermark: variante originale preferate; absența nu este verificată vizual.', value0=escape((info.title or tr('Fotografii TikTok'))[:160]), value1=len(info.photos), value2=', '.join(dimensions[:8]) or tr('necunoscute')))
     fmt = verified or source
-    dimensions = f"{fmt.width} × {fmt.height}" if fmt and fmt.width and fmt.height else "Necunoscută"
-    fps = f"{fmt.fps:g}" if fmt and fmt.fps else "Necunoscut"
-    watermark = "Necunoscut"
+    dimensions = f'{fmt.width} × {fmt.height}' if fmt and fmt.width and fmt.height else tr('Necunoscută')
+    fps = f'{fmt.fps:g}' if fmt and fmt.fps else tr('Necunoscut')
+    watermark = tr('Necunoscut')
     if source and source.has_watermark is True:
-        watermark = "Da (raportat de sursă)"
+        watermark = tr('Da (raportat de sursă)')
     elif source and source.has_watermark is False:
-        watermark = "Nu (declarat de sursă; neverificat vizual)"
+        watermark = tr('Nu (declarat de sursă; neverificat vizual)')
         if source.watermark_evidence and "playback" in source.watermark_evidence:
-            watermark = "Variantă playback fără overlay TikTok (inferență din sursă; neverificat vizual)"
+            watermark = tr('Variantă playback fără overlay TikTok (inferență din sursă; neverificat vizual)')
     estimated = size is None and source is not None and source.filesize_estimated
     reported_size = size if size is not None else source.filesize if source else None
-    size_text = f"{reported_size / 1_000_000:.2f} MB" if reported_size is not None else "Necunoscută"
+    size_text = f'{reported_size / 1000000:.2f} MB' if reported_size is not None else tr('Necunoscută')
     if estimated:
-        size_text += " (estimată)"
-    preparation = ("🎬 Preview recodat în H.264/AAC" if verified and verified.transcoded else
-                   "🎬 MP4 remuxat fără recodare" if verified and verified.remuxed else
-                   "💎 Calitate: originală disponibilă, fără upscaling")
+        size_text += tr(' (estimată)')
+    preparation = (tr('🎬 Preview recodat în H.264/AAC') if verified and verified.transcoded else
+                   tr('🎬 MP4 remuxat fără recodare') if verified and verified.remuxed else
+                   tr('💎 Calitate: originală disponibilă, fără upscaling'))
     return (
-        f"🎬 <b>{escape((info.title or 'Videoclip')[:160])}</b>\n"
-        f"📹 Rezoluție: {dimensions} ({'verificată' if verified else 'raportată de sursă'})\n🎞 FPS: {fps}\n📦 Dimensiune: {size_text}\n"
-        f"{preparation}\n"
-        f"👤 Autor: {escape((info.uploader or 'Necunoscut')[:100])}\n"
-        f"💧 Watermark: {watermark}"
+        tr('🎬 <b>{value0}</b>\n📹 Rezoluție: {value1} ({value2})\n🎞 FPS: {value3}\n📦 Dimensiune: {value4}\n{value5}\n👤 Autor: {value6}\n💧 Watermark: {value7}', value0=escape((info.title or tr('Videoclip'))[:160]), value1=dimensions, value2=tr('verificată') if verified else tr('raportată de sursă'), value3=fps, value4=size_text, value5=preparation, value6=escape((info.uploader or tr('Necunoscut'))[:100]), value7=watermark)
     )
 
 
 def error_text(exc: Exception) -> str:
     """Translate domain errors without exposing raw errors, URLs or tracebacks."""
     if isinstance(exc, RateLimitedError):
-        return f"⏳ Ai atins limita temporară. Încearcă din nou în {exc.retry_after} secunde."
+        return tr('⏳ Ai atins limita temporară. Încearcă din nou în {value0} secunde.', value0=exc.retry_after)
     messages = (
-        (SourceVariantUnavailableError, "Sursa nu oferă o variantă identificată fără watermark. Nu trimit variante cu watermark sau cu statut necunoscut."),
-        (QueueFullError, "Coada este plină sau botul se oprește. Încearcă din nou mai târziu."),
-        (InvalidURLError, "Trimite un singur link TikTok valid (video sau fotografii), YouTube Shorts sau Instagram Reels public."),
-        (FileSizeLimitError, "Fișierul este prea mare pentru limita locală sau pentru uploadul botului Telegram. Nu reduc artificial calitatea."),
-        (DeletedVideoError, "Postarea a fost ștearsă sau nu mai poate fi găsită."),
-        (PrivateVideoError, "Postarea este privată sau necesită autentificare. Sunt acceptate doar postări publice."),
-        (RegionalRestrictionError, "Postarea nu este disponibilă în regiunea serverului. Nu încerc ocolirea restricției."),
-        (DownloadTimeoutError, "Operația a durat prea mult. Încearcă din nou mai târziu."),
-        (NetworkError, "Conexiunea cu sursa a eșuat. Încearcă din nou mai târziu."),
-        (CorruptFileError, "Fișierul nu a trecut verificarea de integritate. Nu îl voi trimite."),
-        (InsufficientSpaceError, "Nu există suficient spațiu de lucru pe server. Încearcă mai târziu."),
-        (MissingFFmpegError, "Procesarea video nu este disponibilă momentan. Administratorul trebuie să verifice FFmpeg și ffprobe."),
-        (TelegramDeliveryError, "Nu am putut finaliza trimiterea prin Telegram. Poți reîncerca folosind butonul."),
-        (VideoUnavailableError, "Postarea sau pista audio este indisponibilă momentan pentru extracție. Această eroare nu confirmă că postarea a fost ștearsă."),
+        (SourceVariantUnavailableError, tr('Sursa nu oferă o variantă identificată fără watermark. Nu trimit variante cu watermark sau cu statut necunoscut.')),
+        (QueueFullError, tr('Coada este plină sau botul se oprește. Încearcă din nou mai târziu.')),
+        (InvalidURLError, tr('Trimite un singur link TikTok valid (video sau fotografii), YouTube Shorts sau Instagram Reels public.')),
+        (FileSizeLimitError, tr('Fișierul este prea mare pentru limita locală sau pentru uploadul botului Telegram. Nu reduc artificial calitatea.')),
+        (DeletedVideoError, tr('Postarea a fost ștearsă sau nu mai poate fi găsită.')),
+        (PrivateVideoError, tr('Postarea este privată sau necesită autentificare. Sunt acceptate doar postări publice.')),
+        (RegionalRestrictionError, tr('Postarea nu este disponibilă în regiunea serverului. Nu încerc ocolirea restricției.')),
+        (DownloadTimeoutError, tr('Operația a durat prea mult. Încearcă din nou mai târziu.')),
+        (NetworkError, tr('Conexiunea cu sursa a eșuat. Încearcă din nou mai târziu.')),
+        (CorruptFileError, tr('Fișierul nu a trecut verificarea de integritate. Nu îl voi trimite.')),
+        (InsufficientSpaceError, tr('Nu există suficient spațiu de lucru pe server. Încearcă mai târziu.')),
+        (MissingFFmpegError, tr('Procesarea video nu este disponibilă momentan. Administratorul trebuie să verifice FFmpeg și ffprobe.')),
+        (TelegramDeliveryError, tr('Nu am putut finaliza trimiterea prin Telegram. Poți reîncerca folosind butonul.')),
+        (VideoUnavailableError, tr('Postarea sau pista audio este indisponibilă momentan pentru extracție. Această eroare nu confirmă că postarea a fost ștearsă.')),
     )
     for kind, message in messages:
         if isinstance(exc, kind):
             return "❌ " + message
-    return "❌ Operația nu a putut fi finalizată. Încearcă din nou mai târziu."
+    return tr('❌ Operația nu a putut fi finalizată. Încearcă din nou mai târziu.')
