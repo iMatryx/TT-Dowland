@@ -47,3 +47,7 @@ downloads/*
 /tiktok-ultra-downloader/
 backups/
 
+
+# Optional isolated server test environment and reports.
+.venv-live/
+test-results/

@@ -14,4 +14,8 @@ class ProgressMessage:
         except TelegramBadRequest as exc:
             if "message is not modified" in exc.message.lower():
                 return
+            if not any(reason in exc.message.lower() for reason in (
+                "message can't be edited", "message cannot be edited", "message to edit not found",
+            )):
+                raise
             self.message = await self.message.answer(text, reply_markup=reply_markup, parse_mode="HTML")

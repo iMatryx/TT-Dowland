@@ -41,3 +41,19 @@ async def test_middleware_cooldown_suppresses_repeated_spam_notices() -> None:
     message.answer.assert_awaited_once()
     assert "limita temporară" in message.answer.call_args.args[0]
     assert not runtime.handlers
+
+
+def test_logs_redact_signed_urls_in_http_messages_and_tracebacks():
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.addFilter(SecretFilter())
+    logger = logging.Logger('isolated-url-redaction')
+    logger.addHandler(handler)
+    url = 'https://cdn.example/@personal/video?signature=private&token=secret'
+    try:
+        raise RuntimeError(url)
+    except RuntimeError:
+        logger.exception('HTTP Request: GET %s', url)
+    text = output.getvalue()
+    assert 'personal' not in text and 'private' not in text and 'secret' not in text
+    assert '[REDACTED_URL]' in text

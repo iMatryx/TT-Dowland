@@ -63,3 +63,32 @@ def test_user_home_paths_and_whitespace_are_normalized() -> None:
     assert settings.bot_token is None
     assert settings.log_level == "INFO"
 
+
+
+def test_conversion_concurrency_is_independent_and_validated(monkeypatch):
+    monkeypatch.setenv('MAX_CONCURRENT_CONVERSIONS', '2')
+    settings = Settings(MAX_CONCURRENT_DOWNLOADS=4)
+    assert settings.max_concurrent_conversions == 2
+    assert settings.max_concurrent_downloads == 4
+    with pytest.raises(ValidationError):
+        Settings(MAX_CONCURRENT_CONVERSIONS=0)
+
+
+def test_analysis_cache_settings(monkeypatch):
+    assert Settings().analysis_cache_ttl_seconds == 300
+    monkeypatch.setenv('ANALYSIS_CACHE_TTL_SECONDS', '42')
+    monkeypatch.setenv('ANALYSIS_CACHE_CAPACITY', '7')
+    settings = Settings()
+    assert settings.analysis_cache_ttl_seconds == 42 and settings.analysis_cache_capacity == 7
+    for values in [{'ANALYSIS_CACHE_TTL_SECONDS': 0}, {'ANALYSIS_CACHE_CAPACITY': 0},
+                   {'ANALYSIS_CACHE_TTL_SECONDS': float('inf')}]:
+        with pytest.raises(ValidationError):
+            Settings(**values)
+
+
+def test_retained_originals_cap_is_configurable_and_can_disable_retention(monkeypatch):
+    monkeypatch.setenv('MAX_RETAINED_ORIGINALS_MB', '12')
+    assert Settings().max_retained_originals_mb == 12
+    assert Settings(MAX_RETAINED_ORIGINALS_MB=0).max_retained_originals_mb == 0
+    with pytest.raises(ValidationError):
+        Settings(MAX_RETAINED_ORIGINALS_MB=-1)

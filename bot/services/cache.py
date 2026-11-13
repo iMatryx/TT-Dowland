@@ -4,12 +4,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import os
+import json
 from pathlib import Path
 import sqlite3
 import time
 from typing import Callable, Literal, TypeVar
 
 from bot.models import VideoFormat
+from bot.models.preferences import UserPreferences
 
 T = TypeVar("T")
 
@@ -20,13 +22,17 @@ class CacheEntry:
     video_id: str
     url: str
     quality: str
-    kind: Literal["video", "document"]
+    kind: Literal["video", "document", "zip", "audio"]
     file_id: str
     size: int
     source: VideoFormat | None
     verified: VideoFormat | None
     processed_at: float = field(default_factory=time.time)
     original: bool = False
+
+
+def _saved_preferences(settings: str) -> UserPreferences:
+    return UserPreferences.model_validate_json(settings)
 
 
 class SQLiteCache:
@@ -56,6 +62,16 @@ class SQLiteCache:
                         PRIMARY KEY (bot_id, video_id, quality, kind)
                     );
                     CREATE INDEX IF NOT EXISTS media_processed ON media(processed_at);
+                    CREATE TABLE IF NOT EXISTS user_preferences (
+                        user_id INTEGER PRIMARY KEY, settings TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS media_details (
+                        bot_id INTEGER NOT NULL, chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL, summary TEXT NOT NULL,
+                        details TEXT NOT NULL, processed_at REAL NOT NULL,
+                        PRIMARY KEY (bot_id, chat_id, message_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS details_processed ON media_details(processed_at);
                     PRAGMA user_version=1;
                 """)
             except BaseException:
@@ -73,6 +89,43 @@ class SQLiteCache:
 
     async def open(self) -> None:
         await self._call(lambda db: None)
+
+    async def put_media_details(self, bot_id: int, chat_id: int, message_id: int,
+                                summary: str, details: str) -> None:
+        if len(summary) > 1024 or len(details) > 1024:
+            raise ValueError("Media captions exceed Telegram's limit")
+        def write(db):
+            with db:
+                db.execute("INSERT OR REPLACE INTO media_details VALUES (?,?,?,?,?,?)",
+                           (bot_id, chat_id, message_id, summary, details, time.time()))
+                db.execute("DELETE FROM media_details WHERE processed_at<=?", (time.time() - self.ttl,))
+                db.execute("DELETE FROM media_details WHERE rowid IN "
+                           "(SELECT rowid FROM media_details ORDER BY processed_at DESC LIMIT -1 OFFSET ?)", (self.capacity,))
+        await self._call(write)
+
+    async def get_media_details(self, bot_id: int, chat_id: int, message_id: int) -> tuple[str, str] | None:
+        def read(db):
+            row = db.execute("SELECT summary,details FROM media_details WHERE bot_id=? AND chat_id=? "
+                             "AND message_id=? AND processed_at>?", (bot_id, chat_id, message_id, time.time() - self.ttl)).fetchone()
+            return (row[0], row[1]) if row else None
+        return await self._call(read)
+
+    async def get_preferences(self, user_id: int) -> UserPreferences:
+        def read(db: sqlite3.Connection) -> UserPreferences:
+            row = db.execute("SELECT settings FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
+            return _saved_preferences(row[0]) if row else UserPreferences()
+        return await self._call(read)
+
+    async def update_preferences(self, user_id: int, *, reset: bool = False, **changes) -> UserPreferences:
+        def write(db: sqlite3.Connection) -> UserPreferences:
+            # Read, validate and write within the database's serialized transaction.
+            with db:
+                row = db.execute("SELECT settings FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
+                current = _saved_preferences(row[0]).model_dump() if row and not reset else {}
+                result = UserPreferences.model_validate({**current, **changes})
+                db.execute("INSERT OR REPLACE INTO user_preferences VALUES (?,?)", (user_id, result.model_dump_json()))
+            return result
+        return await self._call(write)
 
     async def get(self, bot_id: int, video_id: str, quality: str,
                   kind: str) -> CacheEntry | None:

@@ -44,6 +44,10 @@ class DeletedVideoError(VideoUnavailableError):
     """The upstream service explicitly reports a deleted video."""
 
 
+class SourceVariantUnavailableError(VideoUnavailableError):
+    """The requested source watermark/quality variant is not available."""
+
+
 class PrivateVideoError(VideoUnavailableError):
     """Private or login-required content is not supported."""
 
@@ -87,6 +91,11 @@ def classify_error(message: str) -> ApplicationError:
         return FileSizeLimitError("Original exceeds MAX_FILE_SIZE_MB.")
     if "ffmpeg" in text and any(word in text for word in ("not found", "not installed")):
         return MissingFFmpegError("FFmpeg is not installed or is not on PATH.")
+    if any(word in text for word in (
+        "permission denied", "read-only file system", "input/output error", "too many open files",
+        "no such file or directory", "[errno 2]", "[errno 5]", "[errno 13]", "[errno 24]", "[errno 30]",
+    )):
+        return ApplicationError("Local filesystem operation failed.")
     if any(word in text for word in ("timed out", "timeout")):
         return DownloadTimeoutError("The remote operation timed out.")
     if any(word in text for word in ("private", "login required", "log in", "sign in")):

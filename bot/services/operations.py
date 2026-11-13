@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from contextvars import Context, copy_context
 import logging
 import random
 import time
@@ -12,6 +13,8 @@ from typing import Any, TypeVar
 from aiogram.exceptions import TelegramRetryAfter
 
 from bot.models.exceptions import DownloadTimeoutError, NetworkError, QueueFullError, RateLimitedError
+
+from bot.utils.performance import Stage, scoped
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -43,17 +46,24 @@ class _Job:
     key: str
     operation: Callable[[], Awaitable[Any]]
     future: asyncio.Future
+    context: Context
+    waiting: Stage
     waiters: int = 0
     task: asyncio.Task | None = None
 
 
 class WorkQueue:
-    """At most concurrency running plus capacity waiting, including shared jobs."""
+    """At most concurrency running plus capacity waiting, including shared jobs.
 
-    def __init__(self, *, concurrency: int = 3, capacity: int = 32, timeout: float = 300) -> None:
-        if min(concurrency, capacity, timeout) <= 0:
-            raise ValueError("Queue parameters must be positive")
+    A zero waiting capacity supports bounded admission with independent resource
+    permits inside each job, without a worker bottleneck between pipeline stages.
+    """
+
+    def __init__(self, *, concurrency: int = 3, capacity: int = 32, timeout: float = 300, name: str = "work") -> None:
+        if concurrency <= 0 or capacity < 0 or timeout <= 0:
+            raise ValueError("Concurrency and timeout must be positive; capacity must be nonnegative")
         self.concurrency, self.capacity, self.timeout = concurrency, capacity, timeout
+        self.name = name
         self._queue: asyncio.Queue[_Job] = asyncio.Queue(capacity + concurrency)
         self._slots = asyncio.Semaphore(concurrency)
         self._jobs: dict[str, _Job] = {}
@@ -61,6 +71,7 @@ class WorkQueue:
         self._workers: list[asyncio.Task] = []
         self._closing = False
 
+    @scoped
     async def run(self, key: str, operation: Callable[[], Awaitable[T]]) -> T:
         if self._closing:
             raise QueueFullError("Service is shutting down.")
@@ -72,23 +83,26 @@ class WorkQueue:
                 raise QueueFullError("Work queue is full.")
             future = asyncio.get_running_loop().create_future()
             future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
-            job = _Job(key, operation, future)
+            job = _Job(key, operation, future, copy_context(), Stage("queue_wait", queue=self.name))
             self._jobs[key] = job
             self._queue.put_nowait(job)
             self._inflight += 1
             if not self._workers:
-                self._workers = [asyncio.create_task(self._worker(), name=f"download-worker-{i}")
+                self._workers = [asyncio.create_task(self._worker(), name=f"{self.name}-worker-{i}")
                                  for i in range(self.concurrency)]
         job.waiters += 1
         try:
             async with asyncio.timeout(self.timeout):
                 return await asyncio.shield(job.future)
         except TimeoutError as exc:
+            if job.waiters == 1:
+                job.waiting.finish("error")
             raise DownloadTimeoutError("Queue and operation deadline exceeded.") from exc
         finally:
             job.waiters -= 1
             if not job.waiters and not job.future.done():
                 job.future.cancel()
+                job.waiting.finish("cancelled")
                 if self._jobs.get(key) is job:
                     del self._jobs[key]
                 if job.task is not None:
@@ -113,12 +127,12 @@ class WorkQueue:
     async def _worker(self) -> None:
         while True:
             job = await self._queue.get()
-            started = time.monotonic()
             try:
                 if job.future.cancelled():
                     continue
                 async with self._slots:
-                    job.task = asyncio.create_task(job.operation())
+                    job.waiting.finish("success")
+                    job.task = asyncio.create_task(job.operation(), context=job.context)
                     try:
                         value = await asyncio.wait_for(job.task, self.timeout)
                     except TimeoutError:
@@ -140,11 +154,11 @@ class WorkQueue:
                     del self._jobs[job.key]
                 self._inflight -= 1
                 self._queue.task_done()
-                logger.info("Operation finished duration_seconds=%.3f", time.monotonic() - started)
 
     async def close(self) -> None:
         self._closing = True
         for job in list(self._jobs.values()):
+            job.waiting.finish("cancelled")
             job.future.cancel()
         for worker in self._workers:
             worker.cancel()

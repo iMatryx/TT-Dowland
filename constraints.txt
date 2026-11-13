@@ -25,3 +25,5 @@ typing-extensions==4.16.0
 typing-inspection==0.4.5
 yarl==1.25.1
 yt-dlp==2026.10.26
+yt-dlp-ejs==0.8.0
+deno==2.9.8

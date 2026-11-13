@@ -34,3 +34,13 @@ def test_metadata_uses_only_reported_fields() -> None:
 ])
 def test_classifies_known_errors(message: str, expected: type[Exception]) -> None:
     assert isinstance(classify_error(message), expected)
+
+
+def test_unavailable_post_error_does_not_misidentify_photos_as_video():
+    from bot.models.exceptions import VideoUnavailableError
+    from bot.utils.telegram_text import error_text
+
+    message = error_text(VideoUnavailableError('internal detail'))
+    assert 'postarea' in message.lower()
+    assert 'videoclipul' not in message.lower()
+    assert 'internal detail' not in message

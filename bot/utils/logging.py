@@ -15,6 +15,7 @@ class SecretFilter(logging.Filter):
             value = value.replace(self.token, "[REDACTED]")
         value = re.sub(r"\b[0-9]{5,}:[A-Za-z0-9_-]{12,}\b", "[REDACTED]", value)
         value = re.sub(r"(?i)(authorization:\s*(?:bearer|basic)\s+)\S+", r"\1[REDACTED]", value)
+        value = re.sub(r"(?i)https?://[^\s<>\"\']+", "[REDACTED_URL]", value)
         return value
 
     def filter(self, record: logging.LogRecord) -> bool:

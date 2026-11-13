@@ -4,12 +4,17 @@ import json
 from functools import cached_property
 from pathlib import Path
 import sys
+import time
 from typing import Any, Iterator
 from urllib.parse import urlsplit
 
 from yt_dlp import YoutubeDL as BaseYoutubeDL
 from yt_dlp.networking._urllib import UrllibRH
 from yt_dlp.globals import plugin_dirs
+from yt_dlp.extractor.tiktok import TikTokIE
+from yt_dlp.networking import Request
+
+from bot.services.tiktok_sources import photo_metadata, annotate_video_sources
 
 from bot.services.urls import normalize_url
 from bot.utils.network import guard_sockets
@@ -17,6 +22,37 @@ from bot.utils.network import guard_sockets
 
 class YoutubeDL(BaseYoutubeDL):
     """Use only the stdlib network handler covered by the socket guard."""
+
+    def run_pp(self, pp, infodict):
+        path = self.params.get('_performance_path')
+        if not path:
+            return super().run_pp(pp, infodict)
+        timings = getattr(self, '_performance_timings', [])
+        self._performance_timings = timings
+        record = {'started': time.monotonic()}
+        timings.append(record)
+
+        def persist():
+            try:
+                target = Path(path)
+                temporary = target.with_suffix('.tmp')
+                temporary.write_text(json.dumps(timings), encoding='utf-8')
+                temporary.replace(target)
+            except OSError:
+                pass
+
+        persist()  # Survives a process-group kill during FFmpeg postprocessing.
+        try:
+            value = super().run_pp(pp, infodict)
+        except BaseException:
+            record['result'] = 'error'
+            raise
+        else:
+            record['result'] = 'success'
+            return value
+        finally:
+            record['finished'] = time.monotonic()
+            persist()
 
     @cached_property
     def _request_director(self):
@@ -37,6 +73,7 @@ class QuietLogger:
 
 
 def base_options() -> dict[str, Any]:
+    bundled_deno = Path(sys.executable).with_name('deno')
     return {
         "quiet": True, "no_warnings": True, "noprogress": True,
         # Metadata selection must not run FFmpeg availability probes.
@@ -49,6 +86,8 @@ def base_options() -> dict[str, Any]:
         "concurrent_fragment_downloads": 1, "cachedir": False,
         "cookiefile": None, "cookiesfrombrowser": None,
         "enable_file_urls": False, "fixup": "never",
+        "js_runtimes": {"deno": {"path": str(bundled_deno)} if bundled_deno.is_file() else {}, "node": {}},
+        "remote_components": set(),
         "overwrites": True, "continuedl": False,
     }
 
@@ -100,9 +139,72 @@ def download_job(payload: dict[str, Any]) -> None:
         "format": selection_callback(payload["video_id"], payload.get("audio_id")),
         "outtmpl": str(Path(payload["media_dir"]) / "original.%(ext)s"),
         "merge_output_format": "mkv", "progress_hooks": [progress],
+        "_performance_path": payload.get("performance_path"),
     }
     with YoutubeDL(options) as ydl:
         ydl.process_ie_result(info, download=True)
+
+
+def extract_job(url: str, ydl: YoutubeDL) -> dict:
+    """Reuse upstream webpage handling and its status codes for both post types."""
+    url = normalize_url(url)
+    host = urlsplit(url).hostname
+    if host == 'www.youtube.com':
+        return ydl.extract_info(url, download=False, ie_key='Youtube')
+    if host == 'www.instagram.com':
+        return ydl.extract_info(url, download=False, ie_key='Instagram')
+    extractor = TikTokIE(ydl)
+    video_id = url.rstrip('/').rsplit('/', 1)[-1]
+    # The /photo/ viewer can omit webapp.video-detail. TikTok serves the
+    # same post's metadata at /video/ even when its content is imagePost.
+    # Only normalize the request route; determine the kind from the item.
+    page_url = url.replace('/photo/', '/video/', 1)
+    item, status = extractor._extract_web_data_and_status(page_url, video_id)
+    if status in (10216, 10222):
+        raise ValueError('private or login required')
+    if status == 10204:
+        raise ValueError('IP blocked from accessing this post')
+    if status or not item:
+        raise ValueError(f'Post unavailable, status {status}')
+    photos = photo_metadata(item, url)
+    if photos is not None:
+        return photos
+    if '/photo/' in url:
+        raise ValueError('Source did not expose photo metadata')
+    info = extractor._parse_aweme_video_web(item, url, video_id)
+    info.update(extractor='TikTok', extractor_key='TikTok', webpage_url=url, original_url=url)
+    annotate_video_sources(info, item)
+    return ydl.process_ie_result(info, download=False)
+
+
+def photo_download_job(payload: dict) -> None:
+    """Stream original image bytes with a total album cap and safe sockets."""
+    total = 0
+    limit = int(payload['max_bytes'])
+    with YoutubeDL(base_options()) as ydl:
+        for index, photo in enumerate(payload['photos']):
+            path = Path(payload['media_dir']) / f'{index + 1:04d}.img'
+            for url in photo['urls']:
+                parts = urlsplit(url)
+                if parts.scheme not in {'http', 'https'} or not parts.hostname or parts.username:
+                    raise ValueError('Unsupported source URL')
+                written = 0
+                try:
+                    with ydl.urlopen(Request(url, headers={'Referer': payload['url']})) as response, path.open('wb') as target:
+                        while block := response.read(64 * 1024):
+                            written += len(block)
+                            if total + written > limit:
+                                raise ValueError('file size limit exceeded')
+                            target.write(block)
+                    if not written:
+                        raise ValueError('Empty source image')
+                except Exception as exc:
+                    path.unlink(missing_ok=True)
+                    if isinstance(exc, ValueError) or url == photo['urls'][-1]:
+                        raise
+                    continue
+                total += written
+                break
 
 
 def worker_main() -> int:
@@ -112,7 +214,7 @@ def worker_main() -> int:
         if action == "extract":
             url = normalize_url(payload["url"])
             with YoutubeDL(base_options()) as ydl:
-                info = ydl.extract_info(url, download=False, ie_key="TikTok")
+                info = extract_job(url, ydl)
                 if not isinstance(info, dict) or info.get("_type", "video") != "video":
                     raise ValueError("Unavailable individual video")
                 Path(payload["output"]).write_text(
@@ -120,6 +222,8 @@ def worker_main() -> int:
                 )
         elif action == "download":
             download_job(payload)
+        elif action == "photos":
+            photo_download_job(payload)
         else:
             raise ValueError("Invalid worker action")
     except Exception as exc:

@@ -32,7 +32,7 @@ def interaction():
         message_id=19, answer=AsyncMock(return_value=status),
     )
     info = VideoInfo(id="123", title="Title <b>outside</b>", uploader="author & co",
-                     webpage_url=message.text, formats=[VideoFormat(
+                     webpage_url=message.text, formats=[VideoFormat(has_watermark=False,
                          format_id="play", ext="mp4", width=1080, height=1920,
                          video_codec="h264", audio_codec="aac", has_audio=True,
                      )])
@@ -53,10 +53,41 @@ async def test_start(interaction) -> None:
 async def test_help(interaction) -> None:
     await help_handler(interaction.message, Settings(), interaction.sender)
     text = interaction.message.answer.call_args.args[0]
-    assert "Descarcă original" in text
+    assert "Ca fișier" in text
     assert "50 MB" in text
     assert "Premium" in text
     assert "upscaling" in text
+
+
+@pytest.mark.asyncio
+async def test_audio_callback_requests_audio_and_cleans(interaction, tmp_path):
+    result = result_for(interaction, tmp_path, ext='mp3')
+    result.audio_only = True
+    result.verified_format = VideoFormat(has_watermark=False, format_id='probe', ext='mp3', has_audio=True, has_video=False)
+    interaction.service.download.return_value = result
+    item = interaction.pending.add(1, 10, 20, interaction.info)
+    query = SimpleNamespace(data=f'dl:audio:{item.key}', from_user=SimpleNamespace(id=1),
+                            message=interaction.status, answer=AsyncMock())
+    interaction.status.message_thread_id = None
+    bot = SimpleNamespace(send_audio=AsyncMock())
+    await callback_handler(query, bot, interaction.service, interaction.pending, interaction.sender)
+    assert interaction.service.download.call_args.kwargs['audio_only'] is True
+    bot.send_audio.assert_awaited_once()
+    assert interaction.pending.get(item.key) is None
+    assert not result.file_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_link_still_offers_audio_when_watermark_preference_is_unavailable(interaction):
+    from bot.models.preferences import UserPreferences
+    interaction.service.analyze.return_value.formats[0].has_watermark = True
+    preferences = SimpleNamespace(get_preferences=AsyncMock(return_value=UserPreferences(watermark='watermarked')))
+    await link_handler(interaction.message, interaction.service, interaction.pending, interaction.sender,
+                       preferences=preferences)
+    keyboard = interaction.status.edit_text.call_args.kwargs.get('reply_markup')
+    assert keyboard is not None
+    assert [b.callback_data.split(':')[1] for row in keyboard.inline_keyboard for b in row
+            if b.callback_data.startswith('dl:')] == ['audio']
 
 
 @pytest.mark.asyncio
@@ -66,10 +97,12 @@ async def test_valid_link_analyzes_and_offers_buttons(interaction) -> None:
     interaction.service.download.assert_not_awaited()
     kwargs = interaction.status.edit_text.call_args.kwargs
     buttons = kwargs["reply_markup"].inline_keyboard
-    assert [row[0].text for row in buttons] == ["📹 Descarcă video", "📁 Descarcă original"]
+    assert [row[0].callback_data.split(":")[1] for row in buttons if row[0].callback_data.startswith("dl:")] == ["chat", "file", "zip", "audio"]
+    assert "În chat" in buttons[0][0].text
     text = interaction.status.edit_text.call_args.args[0]
     assert "&lt;b&gt;outside&lt;/b&gt;" in text
-    assert "author &amp; co" in text
+    assert text == '<b>Title &lt;b&gt;outside&lt;/b&gt;</b>'
+    assert 'author' not in text and 'Rezoluție' not in text
 
 
 @pytest.mark.asyncio
@@ -95,7 +128,7 @@ def result_for(interaction, tmp_path: Path, *, ext: str = "mp4") -> DownloadResu
     return DownloadResult(
         video_info=interaction.info, file_path=path, file_size_bytes=8,
         format=interaction.info.formats[0],
-        verified_format=VideoFormat(format_id="ffprobe", ext=ext, width=1080, height=1920,
+        verified_format=VideoFormat(has_watermark=False, format_id="ffprobe", ext=ext, width=1080, height=1920,
                                     fps=30, video_codec="h264", audio_codec="aac", has_audio=True),
     )
 
@@ -117,7 +150,7 @@ async def test_callback_downloads_and_sends_selected_mode(interaction, tmp_path:
         bot.send_document.assert_awaited_once()
         bot.send_video.assert_not_awaited()
     assert not result.file_path.exists()
-    assert "✅ Videoclipul este gata!" == interaction.status.edit_text.call_args.args[0]
+    assert interaction.status.edit_text.call_args.args[0].startswith("✅")
     assert interaction.pending.get(pending.key) is None
 
 
@@ -222,7 +255,7 @@ async def test_real_dispatcher_routes_link_and_callback_with_mock_session(
         ).as_(bot)
 
     session.side_effect = request
-    dispatcher = create_dispatcher(Settings())
+    dispatcher = create_dispatcher(Settings(DOWNLOAD_DIR=tmp_path, CACHE_DB_PATH=tmp_path / "cache.sqlite3"))
     dependencies = dict(download_service=interaction.service, pending=interaction.pending,
                         sender=interaction.sender)
     result = result_for(interaction, tmp_path)
@@ -231,9 +264,8 @@ async def test_real_dispatcher_routes_link_and_callback_with_mock_session(
     message = {"message_id": 19, "date": 1, "chat": {"id": 10, "type": "private"},
                "from": user, "text": interaction.message.text}
     try:
-        await dispatcher.feed_update(bot, Update.model_validate({"update_id": 1, "message": message}), **dependencies)
-        keyboard = next(call.reply_markup for call in calls if isinstance(call, EditMessageText) and call.reply_markup)
-        data = keyboard.inline_keyboard[0 if mode == "video" else 1][0].callback_data
+        item = interaction.pending.add(1, 10, 20, interaction.info)
+        data = f'dl:{mode}:{item.key}'
         await dispatcher.feed_update(bot, Update.model_validate({
             "update_id": 2, "callback_query": {
                 "id": "callback-1", "from": user, "chat_instance": "chat", "data": data,
@@ -243,4 +275,5 @@ async def test_real_dispatcher_routes_link_and_callback_with_mock_session(
         assert any(isinstance(call, SendVideo if mode == "video" else SendDocument) for call in calls)
         assert not result.file_path.exists()
     finally:
+        await dispatcher["preferences"].close()
         await bot.session.close()

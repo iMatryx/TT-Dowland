@@ -14,7 +14,7 @@ dependencies = [
     "httpcore>=1,<2",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.2,<3.0",
-    "yt-dlp>=2024.1.1",
+    "yt-dlp[default,deno]>=2026.10.26",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +31,7 @@ tiktok-ultra-download = "bot.cli:main"
 addopts = "-ra"
 testpaths = ["tests"]
 asyncio_mode = "auto"
-markers = ["live: optional real public TikTok download (requires TIKTOK_TEST_URL)"]
+markers = ["live: optional server-side public TikTok/YouTube/Instagram checks; Telegram sends require separate opt-in"]
 
 [tool.setuptools.packages.find]
 include = ["bot", "bot.*"]

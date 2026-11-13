@@ -17,12 +17,12 @@ async def setup_runtime(tmp_path: Path):
                         SHUTDOWN_GRACE_SECONDS=0.02)
     runtime = BotRuntime(settings)
     await runtime.start()
-    source = VideoFormat(format_id="source", ext="mp4", width=1080, height=1920,
+    source = VideoFormat(has_watermark=False, format_id="source", ext="mp4", width=1080, height=1920,
                          fps=30, video_codec="h264", audio_codec="aac", has_audio=True)
     info = VideoInfo(id="123", webpage_url="https://www.tiktok.com/@author/video/123", formats=[source])
     created = []
 
-    async def download(url):
+    async def download(url, *, preference="prefer_clean"):
         path = runtime.work_dir / f"tiktok-{len(created)}.mp4"
         path.write_bytes(b"original")
         created.append(path)
@@ -45,6 +45,63 @@ async def setup_runtime(tmp_path: Path):
 
 async def deliver(state, chat, mode="document"):
     await state.runtime.deliver(state.bot, chat, state.info, mode, state.service, state.sender, state.progress)
+
+
+@pytest.mark.asyncio
+async def test_audio_cache_is_reused_without_satisfying_video_requests(setup_runtime):
+    state = setup_runtime
+    original_download = state.service.download.side_effect
+    async def download(url, *, audio_only=False, quality='high', **kwargs):
+        if not audio_only:
+            return await original_download(url, **kwargs)
+        path = state.runtime.work_dir / 'sound.mp3'
+        path.write_bytes(b'audio')
+        state.created.append(path)
+        return DownloadResult(video_info=state.info, file_path=path, file_size_bytes=5, audio_only=True,
+                              format=state.info.formats[0], verified_format=VideoFormat(has_watermark=False,
+                                  format_id='probe', ext='mp3', has_video=False, has_audio=True, audio_codec='mp3'))
+    state.service.download.side_effect = download
+    state.bot.send_audio = AsyncMock(return_value=SimpleNamespace(audio=SimpleNamespace(file_id='audio-id')))
+    await deliver(state, 1, 'audio')
+    await deliver(state, 2, 'audio')
+    assert state.service.download.await_count == 1
+    assert state.bot.send_audio.call_args.kwargs['audio'] == 'audio-id'
+    await deliver(state, 3, 'document')
+    assert state.service.download.await_count == 2
+    assert state.bot.send_document.call_args.kwargs['document'] != 'audio-id'
+    assert not any(path.exists() for path in state.created)
+
+
+def test_cache_identity_includes_source_platform():
+    from bot.services.runtime import quality_key
+    source = VideoFormat(has_watermark=False, format_id='same', ext='mp4', has_audio=True)
+    first = VideoInfo(id='123', webpage_url='https://www.tiktok.com/@u/video/123', formats=[source])
+    second = first.model_copy(update={'webpage_url': 'https://www.instagram.com/reel/123/'})
+    assert quality_key(first) != quality_key(second)
+
+
+@pytest.mark.asyncio
+async def test_automatic_video_cache_hit_binds_new_controls_to_recipient(setup_runtime):
+    from datetime import datetime, timezone
+    from aiogram.types import Message, Chat, Video
+    from bot.services.telegram_download import PendingRequests
+    state = setup_runtime
+    pending = PendingRequests()
+    sender = TelegramSender(details=state.runtime.preferences, pending=pending)
+    async def video(**kwargs):
+        return Message(message_id=30 + kwargs['chat_id'], date=datetime.now(timezone.utc),
+            chat=Chat(id=kwargs['chat_id'], type='private'),
+            video=Video(file_id='preview-id', file_unique_id='preview-unique', width=1080, height=1920, duration=1))
+    state.bot.send_video.side_effect = video
+    state.bot.edit_message_reply_markup = AsyncMock()
+    for chat, owner in [(1, 11), (2, 22)]:
+        await state.runtime.deliver(state.bot, chat, state.info, 'preview', state.service, sender, state.progress, owner_id=owner)
+        controls = state.bot.edit_message_reply_markup.call_args.kwargs
+        key = controls['reply_markup'].inline_keyboard[0][0].callback_data.rsplit(':', 1)[1]
+        item = pending.get(key)
+        assert (item.user_id, item.chat_id, item.message_id) == (owner, chat, 30 + chat)
+    state.service.download.assert_awaited_once()
+    assert state.bot.send_video.call_args.kwargs['video'] == 'preview-id'
 
 
 @pytest.mark.asyncio
@@ -146,7 +203,7 @@ async def test_failed_destination_does_not_fail_healthy_recipient(setup_runtime)
 
     state = setup_runtime
     joined, sending = asyncio.Event(), asyncio.Event()
-    original_run = state.runtime.queue.run
+    original_run = state.runtime.delivery_queue.run
     admissions = 0
 
     async def run(key, operation):
@@ -156,7 +213,7 @@ async def test_failed_destination_does_not_fail_healthy_recipient(setup_runtime)
             joined.set()
         return await original_run(key, operation)
 
-    state.runtime.queue.run = run
+    state.runtime.delivery_queue.run = run
 
     async def send(**kwargs):
         if kwargs["chat_id"] == 1:
@@ -214,10 +271,10 @@ async def test_cancelling_one_destination_does_not_upload_to_it_or_cancel_follow
     original = state.service.download.side_effect
     status_count = 0
 
-    async def download(url):
+    async def download(url, *, preference="prefer_clean"):
         started.set()
         await release.wait()
-        return await original(url)
+        return await original(url, preference=preference)
 
     async def status(text):
         nonlocal status_count
@@ -245,3 +302,37 @@ async def test_cancelling_one_destination_does_not_upload_to_it_or_cancel_follow
         first.cancel()
         second.cancel()
         await asyncio.gather(first, second, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_clean_document_preference_uses_clean_selection_and_original_cache(setup_runtime):
+    state = setup_runtime
+    state.info.formats[0].has_watermark = False
+    state.info.formats.append(VideoFormat(format_id='higher-watermarked', ext='mp4',
+        width=2160, height=3840, has_watermark=True, has_audio=True))
+    await deliver(state, 1, 'clean_document')
+    assert state.service.download.call_args.kwargs['preference'] == 'clean'
+    state.bot.send_video.assert_not_awaited()
+    await deliver(state, 2, 'clean_document')
+    state.service.download.assert_awaited_once()
+    assert state.bot.send_document.call_args.kwargs['document'] == 'document-id'
+    await deliver(state, 3, 'document')
+    state.service.download.assert_awaited_once()
+    assert state.service.download.call_args.kwargs['preference'] == 'clean'
+
+
+async def test_telegram_cache_counts_logical_lookups_and_uploads(setup_runtime, caplog):
+    import json
+    import logging
+    caplog.set_level(logging.INFO, logger='bot.performance')
+    state = setup_runtime
+    await deliver(state, 1)
+    await deliver(state, 2)
+    events = [json.loads(r.message) for r in caplog.records if r.name == 'bot.performance']
+    lookups = [e for e in events if e.get('cache') == 'telegram']
+    assert [e['outcome'] for e in lookups] == ['miss', 'hit']
+    assert lookups[-1]['hit_rate'] == 0.5
+    uploads = [e for e in events if e.get('stage') == 'upload']
+    assert len(uploads) == 2
+    assert all(e['platform'] == 'tiktok' and e['result'] == 'success' for e in uploads)
+    assert 'document-id' not in json.dumps(events)

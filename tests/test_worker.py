@@ -119,3 +119,18 @@ def test_metadata_selection_does_not_probe_ffmpeg(monkeypatch) -> None:
     }]}
     with ytdlp_worker.YoutubeDL(ytdlp_worker.base_options()) as ydl:
         assert ydl.process_ie_result(info, download=False)["id"] == "123"
+
+
+def test_postprocessing_records_only_timing_data(tmp_path):
+    from yt_dlp.postprocessor.common import PostProcessor
+    class LocalPP(PostProcessor):
+        def run(self, info):
+            return [], info
+    timings = tmp_path / 'timings.json'
+    with ytdlp_worker.YoutubeDL({**ytdlp_worker.base_options(), '_performance_path': str(timings)}) as ydl:
+        ydl.run_pp(LocalPP(ydl), {'id': 'personal', 'url': 'https://signed.example/?secret=private'})
+    data = json.loads(timings.read_text())
+    assert len(data) == 1
+    assert data[0]['result'] == 'success'
+    assert data[0]['finished'] >= data[0]['started']
+    assert 'personal' not in timings.read_text() and 'private' not in timings.read_text()

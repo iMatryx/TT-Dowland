@@ -7,13 +7,19 @@ import httpx
 
 from bot.models.exceptions import DownloadTimeoutError, InvalidURLError, NetworkError, classify_error
 
-HOSTS = frozenset({"www.tiktok.com", "tiktok.com", "vm.tiktok.com", "vt.tiktok.com"})
-VIDEO_PATH = re.compile(r"/@[A-Za-z0-9_.-]+/video/[0-9]+/?\Z")
+TIKTOK_HOSTS = frozenset({"www.tiktok.com", "tiktok.com", "vm.tiktok.com", "vt.tiktok.com"})
+YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"})
+INSTAGRAM_HOSTS = frozenset({"instagram.com", "www.instagram.com"})
+HOSTS = TIKTOK_HOSTS | YOUTUBE_HOSTS | INSTAGRAM_HOSTS
+VIDEO_PATH = re.compile(r"/@[A-Za-z0-9_.-]+/(?:video|photo)/[0-9]+/?\Z")
 SHORT_PATH = re.compile(r"/(?:t/)?[A-Za-z0-9_-]+/?\Z")
+YOUTUBE_PATH = re.compile(r"/shorts/([A-Za-z0-9_-]{11})/?\Z")
+YOUTUBE_SHORT_PATH = re.compile(r"/([A-Za-z0-9_-]{11})/?\Z")
+INSTAGRAM_PATH = re.compile(r"/reels?/([A-Za-z0-9_-]+)/?\Z")
 
 
 def normalize_url(value: str) -> str:
-    """Accept only video/short links on exact TikTok hosts, upgrading to HTTPS."""
+    """Validate individual clips on exact platform hosts, stripping tracking."""
     value = value.strip()
     if not value or any(ord(char) < 32 or ord(char) == 127 for char in value) or "\\" in value:
         raise InvalidURLError("Invalid characters in URL.")
@@ -27,7 +33,17 @@ def normalize_url(value: str) -> str:
     if (parts.scheme not in {"https", "http"} or host not in HOSTS
             or parts.username is not None or parts.password is not None
             or port not in {None, 443}):
-        raise InvalidURLError("Only public TikTok URLs on standard HTTPS are supported.")
+        raise InvalidURLError("Only supported public clip URLs on standard HTTPS are accepted.")
+    if host in YOUTUBE_HOSTS:
+        match = (YOUTUBE_SHORT_PATH if host == "youtu.be" else YOUTUBE_PATH).fullmatch(parts.path)
+        if not match:
+            raise InvalidURLError("Expected an individual YouTube Shorts link.")
+        return f"https://www.youtube.com/shorts/{match[1]}"
+    if host in INSTAGRAM_HOSTS:
+        match = INSTAGRAM_PATH.fullmatch(parts.path)
+        if not match:
+            raise InvalidURLError("Expected an individual Instagram Reel link.")
+        return f"https://www.instagram.com/reel/{match[1]}/"
     if host in {"www.tiktok.com", "tiktok.com"} and VIDEO_PATH.fullmatch(parts.path):
         host = "www.tiktok.com"
         path = parts.path.rstrip("/")
@@ -42,6 +58,8 @@ def normalize_url(value: str) -> str:
 async def resolve_url(value: str, client: httpx.AsyncClient) -> str:
     """Resolve short links without downloading bodies or following unchecked hosts."""
     current = normalize_url(value)
+    if urlsplit(current).hostname not in TIKTOK_HOSTS:
+        return current
     seen: set[str] = set()
     for _ in range(6):
         if VIDEO_PATH.fullmatch(urlsplit(current).path):
@@ -56,6 +74,8 @@ async def resolve_url(value: str, client: httpx.AsyncClient) -> str:
                     if not location:
                         raise InvalidURLError("Redirect without a destination.")
                     current = normalize_url(urljoin(current, location))
+                    if urlsplit(current).hostname not in TIKTOK_HOSTS:
+                        raise InvalidURLError("TikTok redirects cannot switch platforms.")
                 elif response.is_error:
                     raise classify_error(f"HTTP Error {response.status_code}")
                 else:

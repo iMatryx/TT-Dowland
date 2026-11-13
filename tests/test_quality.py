@@ -6,6 +6,7 @@ from bot.models.exceptions import VideoUnavailableError
 
 
 def fmt(name: str, width: int | None, height: int | None, **kw: object) -> VideoFormat:
+    kw.setdefault("has_watermark", False)
     return VideoFormat(format_id=name, ext="mp4", width=width, height=height, **kw)
 
 
@@ -25,11 +26,13 @@ def test_no_upscaling_or_invented_resolution() -> None:
 
 def test_known_clean_precedes_unknown_and_watermarked() -> None:
     clean = fmt("clean", 720, 1280, has_watermark=False)
-    unknown = fmt("unknown", 1080, 1920)
+    unknown = fmt("unknown", 1080, 1920, has_watermark=None)
     watermarked = fmt("wm", 2160, 3840, has_watermark=True)
-    assert select_formats([watermarked, unknown, clean]).video == clean
-    assert select_formats([watermarked, unknown]).video == unknown
-    assert select_formats([watermarked]).video.has_watermark is True
+    assert select_formats([watermarked, unknown, clean], preference="prefer_clean").video == clean
+    with pytest.raises(VideoUnavailableError):
+        select_formats([watermarked, unknown])
+    with pytest.raises(VideoUnavailableError):
+        select_formats([watermarked])
 
 
 def test_quality_ties_use_fps_then_bitrate() -> None:

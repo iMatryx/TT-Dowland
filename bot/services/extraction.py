@@ -1,6 +1,7 @@
 """Extractor protocol and the real, isolated yt-dlp implementation."""
 
 from dataclasses import dataclass
+from contextlib import contextmanager
 import asyncio
 import json
 import math
@@ -11,8 +12,8 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
-from bot.models import VideoFormat, VideoInfo
-from bot.models.exceptions import VideoUnavailableError, classify_error
+from bot.models import VideoFormat, VideoInfo, PhotoInfo
+from bot.models.exceptions import VideoUnavailableError, NetworkError, classify_error
 from bot.utils.process import run_process
 
 
@@ -20,6 +21,26 @@ from bot.utils.process import run_process
 class Extraction:
     video: VideoInfo
     info_path: Path
+    cached: bool = False
+    cache_token: str | None = None
+
+
+class CachedExtractionError(Exception):
+    """A transfer that actually used cached source data failed upstream."""
+    def __init__(self, token: str | None, error: Exception) -> None:
+        self.token, self.error = token, error
+        super().__init__('Cached media transfer failed.')
+
+
+@contextmanager
+def media_transfer(extraction: Extraction):
+    # Scope narrowly around network transfer, never local verification/conversion/upload.
+    try:
+        yield
+    except (NetworkError, VideoUnavailableError) as exc:
+        if extraction.cached:
+            raise CachedExtractionError(extraction.cache_token, exc) from exc
+        raise
 
 
 class Extractor(Protocol):
@@ -64,7 +85,7 @@ def metadata_from_ytdlp(info: dict[str, Any], url: str) -> VideoInfo:
         note = _text(source.get("format_note")) or ""
         watermark, evidence = None, None
         if isinstance(source.get("has_watermark"), bool):
-            watermark, evidence = source["has_watermark"], "extractor.has_watermark"
+            watermark, evidence = source["has_watermark"], source.get("watermark_evidence") or "extractor.has_watermark"
         elif re.search(r"\b(no[ -]watermark|without watermark|unwatermarked|not watermarked)\b", note, re.I):
             watermark, evidence = False, f"extractor.format_note: {note}"
         elif re.search(r"\bwatermarked\b", note, re.I):
@@ -91,6 +112,8 @@ def metadata_from_ytdlp(info: dict[str, Any], url: str) -> VideoInfo:
             id=str(info["id"]), webpage_url=url,
             title=_text(info.get("title")), uploader=_text(info.get("uploader")),
             duration_seconds=_number(info.get("duration")), formats=formats,
+            media_type=info.get("media_type", "video"),
+            photos=[PhotoInfo.model_validate(p) for p in info.get("photos", [])],
         )
     except ValidationError as exc:
         raise VideoUnavailableError("Extractor returned invalid video metadata.") from exc
