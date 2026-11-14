@@ -481,6 +481,11 @@ Instrucțiunile OCI sunt în [DEPLOY_ORACLE.md](DEPLOY_ORACLE.md). Documentația
 înseamnă că imaginea a fost construită, că s-a făcut deployment sau că există un
 test real de uptime. Raportul execuției indică separat verificările realizate.
 
+Pentru un server Oracle existent și actualizări automate după push pe `main`,
+urmează [DEPLOY_AUTO.md](DEPLOY_AUTO.md). Workflow-ul testează offline și publică
+imaginea AMD64/ARM64 în GHCR; timerul instalat separat actualizează numai botul.
+Tokenul Telegram se configurează pe server, nu în workflow sau repository.
+
 ### Măsurarea performanței
 
 La `LOG_LEVEL=INFO`, `bot.performance` emite evenimente JSON pentru analiză,

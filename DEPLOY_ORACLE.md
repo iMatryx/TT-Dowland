@@ -1,5 +1,10 @@
 # Deployment OCI ulterior — Ubuntu 24.04 ARM64
 
+**Pentru VM-ul existent și actualizare la push pe `main`, folosește
+[ghidul pas cu pas DEPLOY_AUTO.md](DEPLOY_AUTO.md).** Ghidul de mai jos rămâne
+varianta manuală pentru un host ARM64 nou; nu aplica instalarea Docker de aici
+pe un server care găzduiește deja alte proiecte fără verificarea configurației.
+
 Acesta este un ghid pentru o activare viitoare. Niciuna dintre acțiunile Oracle,
 SSH sau Telegram de mai jos nu este executată în etapa de pregătire.
 

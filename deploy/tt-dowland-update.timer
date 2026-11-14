@@ -1,0 +1,11 @@
+[Unit]
+Description=Check TT-Dowland main image every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+Unit=tt-dowland-update.service
+
+[Install]
+WantedBy=timers.target
