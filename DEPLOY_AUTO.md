@@ -1,5 +1,12 @@
 # Oracle: instalare și actualizare după push pe main
 
+Imaginea folosește implicit `python:3.12-slim-trixie`. În testul comparativ pe
+Mac ARM64, linkul TikTok verificat a eșuat în imaginea Bookworm și a expus 8
+variante în imaginea Trixie, cu aceeași versiune yt-dlp 2026.10.26. Testul a
+verificat extracția metadatelor. Accesul și livrarea pe Oracle se verifică separat
+după actualizare. Schimbarea bazei modifică mai multe biblioteci de sistem și
+nu izolează OpenSSL drept singura cauză.
+
 Aceste instrucțiuni sunt pentru VM-ul **existent**, alături de celălalt proiect.
 Nu au fost executate pe server. Nu trebuie repornit VM-ul pentru actualizări.
 
