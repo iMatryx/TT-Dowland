@@ -61,6 +61,26 @@ async def test_success_publishes_original_and_preserves_author(engine, tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_unknown_watermark_downloads_original_without_claiming_absence(engine, monkeypatch):
+    source_extract = engine.extractor.source.extract
+
+    async def extract(url, workspace):
+        extraction = await source_extract(url, workspace)
+        extraction.video.formats[0].has_watermark = None
+        return extraction
+
+    monkeypatch.setattr(engine.extractor.source, 'extract', extract)
+    result = await engine.download(URL)
+    try:
+        assert result.file_path.read_bytes() == b'original'
+        assert result.format.has_watermark is None
+        assert any('unknown' in warning.lower() for warning in result.warnings)
+        assert not any('no watermark' in warning for warning in result.warnings)
+    finally:
+        result.cleanup()
+
+
+@pytest.mark.asyncio
 async def test_corruption_never_publishes_and_cleans(engine, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     async def reject(path: Path, *, timeout: float, full_decode: bool = False):
         raise CorruptFileError("bad media")

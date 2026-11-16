@@ -22,7 +22,7 @@ def test_unknown_resolution_does_not_displace_known_clean_resolution():
     assert select_formats(formats).video.format_id == 'clean-high'
 
 
-def test_watermarked_or_unknown_source_is_unavailable():
+def test_watermarked_source_is_unavailable():
     from bot.models.exceptions import SourceVariantUnavailableError
     with pytest.raises(SourceVariantUnavailableError):
         select_formats(variants()[2:])
@@ -38,12 +38,9 @@ def test_photo_variants_preserve_order_and_independent_options():
          'ownerWatermarkImage': {'urlList': [f'https://cdn.example/{i}-wm'], 'width': 1000, 'height': 1500}}
         for i in range(2)]}}
     info = metadata_from_ytdlp(photo_metadata(item, 'https://www.tiktok.com/@a/photo/123'), 'https://www.tiktok.com/@a/photo/123')
-    for photo in info.photos:
-        for variant in photo.variants:
-            if variant.has_watermark is None:
-                variant.has_watermark = False
     selected = select_photos(info)
     assert [str(p.urls[0]) for p in selected.photos] == ['https://cdn.example/0-high', 'https://cdn.example/1-high']
+    assert all(p.has_watermark is None for p in selected.photos)
 
 
 @pytest.mark.asyncio

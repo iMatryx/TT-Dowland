@@ -23,9 +23,9 @@ CORE = {
     '📥 Trimite un link public TikTok (video sau fotografii), YouTube Shorts ori Instagram Reels.': {
         'ru': '📥 Отправьте ссылку на публичный TikTok (видео или фото), YouTube Shorts или Instagram Reels.',
         'en': '📥 Send a public TikTok (video or photos), YouTube Shorts or Instagram Reels link.'},
-    'ℹ️ <b>Limite și calitate</b>\n\n📦 Maximum {limit:g} MB per fișier.\n⏱ Maximum {requests} cereri pe minut.\n💎 Cea mai bună calitate disponibilă la sursă.\n💧 Doar variante identificate fără watermark.\n🔒 Doar postări publice.': {
-        'ru': 'ℹ️ <b>Лимиты и качество</b>\n\n📦 До {limit:g} МБ на файл.\n⏱ До {requests} запросов в минуту.\n💎 Лучшее доступное качество источника.\n💧 Только варианты, отмеченные источником как без водяного знака.\n🔒 Только публичные публикации.',
-        'en': 'ℹ️ <b>Limits and quality</b>\n\n📦 Up to {limit:g} MB per file.\n⏱ Up to {requests} requests per minute.\n💎 Best quality available from the source.\n💧 Only variants identified as watermark-free.\n🔒 Public posts only.'},
+    'ℹ️ <b>Limite și calitate</b>\n\n📦 Maximum {limit:g} MB per fișier.\n⏱ Maximum {requests} cereri pe minut.\n💎 Cea mai bună calitate disponibilă la sursă.\n💧 Prefer variante fără watermark; accept statut necunoscut.\n🔒 Doar postări publice.': {
+        'ru': 'ℹ️ <b>Лимиты и качество</b>\n\n📦 До {limit:g} МБ на файл.\n⏱ До {requests} запросов в минуту.\n💎 Лучшее доступное качество источника.\n💧 Приоритет вариантам без водяного знака; неизвестный статус допустим.\n🔒 Только публичные публикации.',
+        'en': 'ℹ️ <b>Limits and quality</b>\n\n📦 Up to {limit:g} MB per file.\n⏱ Up to {requests} requests per minute.\n💎 Best quality available from the source.\n💧 Prefer watermark-free variants; allow unknown status.\n🔒 Public posts only.'},
     'Pornește botul și alege limba': {'ru': 'Запустить бота и выбрать язык', 'en': 'Start the bot and choose a language'},
     'Schimbă limba': {'ru': 'Сменить язык', 'en': 'Change language'},
     'Cum folosești botul': {'ru': 'Как пользоваться ботом', 'en': 'How to use the bot'},

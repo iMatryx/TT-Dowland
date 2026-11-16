@@ -1,6 +1,10 @@
 """Media UI translations keyed by the original Romanian template."""
 
 MEDIA = {
+    'Instagram a limitat accesul de pe server sau solicită autentificare. Administratorul trebuie să configureze ori să reînnoiască sesiunea Instagram.': {
+        'ru': 'Instagram ограничил доступ с сервера или требует входа. Администратору необходимо настроить или обновить сессию Instagram.',
+        'en': 'Instagram has limited server access or requires authentication. The administrator needs to configure or renew the Instagram session.',
+    },
     'Fotografii': {
         'ru': 'Фотографии',
         'en': 'Photos',
@@ -9,9 +13,9 @@ MEDIA = {
         'ru': 'Видео',
         'en': 'Video',
     },
-    'ℹ️ Sursa nu oferă o variantă video identificată fără watermark. Poți alege doar audio.': {
-        'ru': 'ℹ️ Источник не предлагает видео, определённое как вариант без водяного знака. Можно выбрать только аудио.',
-        'en': 'ℹ️ The source offers no video identified as watermark-free. You can choose audio only.',
+    'ℹ️ Sursa nu oferă video fără watermark sau cu statut necunoscut. Poți alege doar audio.': {
+        'ru': 'ℹ️ Источник не предлагает видео без водяного знака или с неизвестным статусом. Можно выбрать только аудио.',
+        'en': 'ℹ️ The source offers no watermark-free or unknown-status video. You can choose audio only.',
     },
     '⏱ Durată: {value0:g} s (sursă)': {
         'ru': '⏱ Длительность: {value0:g} с (источник)',
@@ -49,9 +53,9 @@ MEDIA = {
         'ru': '💎 Качество: максимальное доступное у источника',
         'en': '💎 Quality: highest available at source',
     },
-    '💧 Watermark: numai variante identificate fără watermark; neverificat vizual.': {
-        'ru': '💧 Водяной знак: только варианты, определённые как варианты без знака; визуально не проверено.',
-        'en': '💧 Watermark: only variants identified as watermark-free; not visually verified.',
+    '💧 Watermark: prefer fără marcaj; accept statut necunoscut; neverificat vizual.': {
+        'ru': '💧 Водяной знак: приоритет вариантам без знака; неизвестный статус допустим; визуально не проверено.',
+        'en': '💧 Watermark: prefer watermark-free; allow unknown status; not visually verified.',
     },
     'Valorile sursei se verifică după descărcare.': {
         'ru': 'Данные источника проверяются после скачивания.',
@@ -273,9 +277,9 @@ MEDIA = {
         'ru': '⏳ Достигнут временный лимит. Попробуйте снова через {value0} секунд.',
         'en': '⏳ You have reached the temporary limit. Try again in {value0} seconds.',
     },
-    'Sursa nu oferă o variantă identificată fără watermark. Nu trimit variante cu watermark sau cu statut necunoscut.': {
-        'ru': 'Источник не предлагает вариант, определённый как вариант без водяного знака. Варианты с водяным знаком или неизвестным статусом не отправляются.',
-        'en': 'The source offers no variant identified as watermark-free. Variants with watermarks or unknown status are not sent.',
+    'Sursa nu oferă o variantă fără watermark sau cu statut necunoscut. Variantele marcate explicit cu watermark nu sunt trimise.': {
+        'ru': 'Источник не предлагает вариант без водяного знака или с неизвестным статусом. Варианты с явно указанным водяным знаком не отправляются.',
+        'en': 'The source offers no watermark-free or unknown-status variant. Explicitly watermarked variants are not sent.',
     },
     'Coada este plină sau botul se oprește. Încearcă din nou mai târziu.': {
         'ru': 'Очередь заполнена или бот останавливается. Попробуйте позже.',

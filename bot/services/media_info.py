@@ -27,7 +27,7 @@ def selection_captions(info: VideoInfo) -> tuple[str, str]:
         try:
             selection = select_formats(info.formats)
         except SourceVariantUnavailableError:
-            warning = tr('ℹ️ Sursa nu oferă o variantă video identificată fără watermark. Poți alege doar audio.')
+            warning = tr('ℹ️ Sursa nu oferă video fără watermark sau cu statut necunoscut. Poți alege doar audio.')
     source = selection.video if selection else None
     rows = [summary, video_details(info, None, source).partition('</b>\n')[2]]
     if info.duration_seconds is not None:
@@ -43,7 +43,7 @@ def selection_captions(info: VideoInfo) -> tuple[str, str]:
     if warning:
         rows.append(warning)
     rows.extend([tr('💎 Calitate: maximă disponibilă la sursă'),
-                 tr('💧 Watermark: numai variante identificate fără watermark; neverificat vizual.'),
+                 tr('💧 Watermark: prefer fără marcaj; accept statut necunoscut; neverificat vizual.'),
                  tr('Valorile sursei se verifică după descărcare.')])
     if info.media_type == 'video':
         rows.append(tr('🎵 Doar audio: MP3, 192 kbps; watermark-ul nu se aplică sunetului.'))

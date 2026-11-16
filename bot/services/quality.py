@@ -31,11 +31,12 @@ def _quality_key(fmt: VideoFormat) -> tuple[float, ...]:
 
 
 def select_formats(formats: list[VideoFormat]) -> FormatSelection:
-    """Choose the highest source variant identified without watermark."""
+    """Prefer clean sources; allow unknown watermark status as a fallback."""
     videos = [f for f in formats if f.has_video is not False and f.video_codec != "none"]
-    videos = [f for f in videos if f.has_watermark is False]
+    clean = [f for f in videos if f.has_watermark is False]
+    videos = clean or [f for f in videos if f.has_watermark is None]
     if not videos:
-        raise SourceVariantUnavailableError("No source variant identified without watermark is available.")
+        raise SourceVariantUnavailableError("No clean or unknown-watermark source variant is available.")
     video = max(videos, key=lambda f: _quality_key(f)[1:] + (_quality_key(f)[0],))
     audio = None
     if video.audio_codec == "none" or video.has_audio is False:

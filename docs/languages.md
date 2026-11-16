@@ -10,7 +10,8 @@ Un nou `/start` sau `/language` cere din nou alegerea înaintea altor acțiuni.
 Limba este salvată per ID de utilizator în tabela `user_languages` din SQLite,
 independent de cache-ul media. Persistă după repornire și cu `CACHE_ENABLED=false`.
 Nu se reintroduc preferințe de calitate sau watermark: selecția sursei rămâne
-fixă la cea mai înaltă calitate identificată fără watermark.
+fixă la cea mai înaltă calitate identificată fără watermark, cu fallback la statut
+necunoscut când nu există variante identificate fără watermark.
 
 Selectorul este legat de utilizator, chat și mesaj, expiră după 10 minute și se
 consumă atomic o singură dată. Un nou `/start` invalidează selectorul precedent.

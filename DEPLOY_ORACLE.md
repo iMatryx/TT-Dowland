@@ -1,5 +1,8 @@
 # Deployment OCI ulterior — Ubuntu 24.04 ARM64
 
+Pentru eroarea Instagram `rate-limit for accessing posts anonymously`, vezi
+[configurarea sesiunii Instagram](docs/instagram-session.md).
+
 **Pentru VM-ul existent și actualizare la push pe `main`, folosește
 [ghidul pas cu pas DEPLOY_AUTO.md](DEPLOY_AUTO.md).** Ghidul de mai jos rămâne
 varianta manuală pentru un host ARM64 nou; nu aplica instalarea Docker de aici

@@ -1,5 +1,8 @@
 # Oracle: instalare și actualizare după push pe main
 
+Pentru eroarea Instagram `rate-limit for accessing posts anonymously`, vezi
+[configurarea sesiunii Instagram](docs/instagram-session.md).
+
 Imaginea folosește implicit `python:3.12-slim-trixie`. În testul comparativ pe
 Mac ARM64, linkul TikTok verificat a eșuat în imaginea Bookworm și a expus 8
 variante în imaginea Trixie, cu aceeași versiune yt-dlp 2026.10.26. Testul a

@@ -24,7 +24,7 @@ async def show_limits(message: Message, settings: Settings, sender: TelegramSend
            '📦 Maximum {limit:g} MB per fișier.\n'
            '⏱ Maximum {requests} cereri pe minut.\n'
            '💎 Cea mai bună calitate disponibilă la sursă.\n'
-           '💧 Doar variante identificate fără watermark.\n'
+           '💧 Prefer variante fără watermark; accept statut necunoscut.\n'
            '🔒 Doar postări publice.', limit=limit / 1_000_000, requests=settings.user_requests_per_minute),
         parse_mode='HTML', reply_markup=main_menu())
 

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from urllib.parse import urlsplit
 
 import httpx
 from contextlib import nullcontext
@@ -41,7 +42,7 @@ class TikTokDownloader:
             raise ValueError("timeout must be positive")
         self.settings = settings
         self.extractor = CachedExtractor(
-            extractor or YtdlpExtractor(timeout=min(timeout, 60)), root=settings.download_dir.expanduser().resolve(),
+            extractor or YtdlpExtractor(timeout=min(timeout, 60), instagram_cookies_file=settings.instagram_cookies_file), root=settings.download_dir.expanduser().resolve(),
             ttl=settings.analysis_cache_ttl_seconds, capacity=settings.analysis_cache_capacity,
             max_bytes=settings.analysis_cache_max_mb * 1024 * 1024,
             enabled=settings.cache_enabled, concurrency=settings.max_concurrent_downloads,
@@ -116,6 +117,8 @@ class TikTokDownloader:
                 "info_path": str(extraction.info_path), "video_id": selection.video.format_id,
                 "audio_id": selection.audio.format_id if selection.audio else None,
                 "media_dir": str(media_dir), "max_bytes": limit, "performance_path": str(timings),
+                "instagram_cookies_file": (str(self.settings.instagram_cookies_file)
+                    if self.settings.instagram_cookies_file and urlsplit(url).hostname == 'www.instagram.com' else None),
             }), encoding="utf-8")
             with media_transfer(extraction), download_stage(timings):
                 await run_worker("download", payload, self.timeout)

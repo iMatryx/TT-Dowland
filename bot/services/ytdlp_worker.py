@@ -1,10 +1,13 @@
 """Internal subprocess adapter; receives only locally generated job files."""
 
 import json
+import io
+from contextlib import redirect_stderr
 from functools import cached_property
 from pathlib import Path
 import sys
 import time
+import warnings
 from typing import Any, Iterator
 from urllib.parse import urlsplit
 
@@ -12,7 +15,10 @@ from yt_dlp import YoutubeDL as BaseYoutubeDL
 from yt_dlp.networking._urllib import UrllibRH
 from yt_dlp.globals import plugin_dirs
 from yt_dlp.extractor.tiktok import TikTokIE
+from yt_dlp.extractor.instagram import InstagramIE
+from yt_dlp.utils import ExtractorError
 from yt_dlp.networking import Request
+from yt_dlp.cookies import YoutubeDLCookieJar
 
 from bot.services.tiktok_sources import photo_metadata, annotate_video_sources
 
@@ -20,8 +26,26 @@ from bot.services.urls import normalize_url
 from bot.utils.network import guard_sockets
 
 
+class PublicInstagramIE(InstagramIE):
+    """Preserve the public-only policy when an operator session is configured."""
+
+    @classmethod
+    def ie_key(cls):
+        return 'Instagram'
+
+    def _extract_product(self, product_info, *args, **kwargs):
+        product = product_info[0] if isinstance(product_info, list) and product_info else product_info
+        if isinstance(product, dict) and (product.get('user') or {}).get('is_private'):
+            raise ExtractorError('Private Instagram posts are not supported', expected=True)
+        return super()._extract_product(product_info, *args, **kwargs)
+
+
 class YoutubeDL(BaseYoutubeDL):
     """Use only the stdlib network handler covered by the socket guard."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.add_info_extractor(PublicInstagramIE(self))
 
     def run_pp(self, pp, infodict):
         path = self.params.get('_performance_path')
@@ -108,6 +132,30 @@ def selection_callback(video_id: str, audio_id: str | None) -> Any:
     return select
 
 
+def load_instagram_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None) -> None:
+    """Import only Instagram cookies into memory; never rewrite the mounted secret."""
+    if not cookie_path or urlsplit(url).hostname != 'www.instagram.com':
+        return
+    try:
+        if Path(cookie_path).stat().st_size > 1024 * 1024:
+            raise ValueError('Oversized cookie file')
+        jar = YoutubeDLCookieJar()
+        # CookieJar's malformed-line warnings can include credential contents.
+        with warnings.catch_warnings(), redirect_stderr(io.StringIO()):
+            warnings.simplefilter('ignore')
+            # yt-dlp normalizes expires=0 to a session cookie only after loading.
+            jar.load(cookie_path, ignore_expires=True)
+        cookies = [cookie for cookie in jar if not cookie.is_expired() and (
+            cookie.domain.lstrip('.') == 'instagram.com'
+            or cookie.domain.lstrip('.').endswith('.instagram.com'))]
+        if not any(cookie.name == 'sessionid' and cookie.value for cookie in cookies):
+            raise ValueError('Missing valid Instagram session')
+    except (OSError, ValueError):
+        raise ValueError('Instagram cookies file is missing, unreadable, invalid, or expired') from None
+    for cookie in cookies:
+        ydl.cookiejar.set_cookie(cookie)
+
+
 def download_job(payload: dict[str, Any]) -> None:
     info = YoutubeDL.sanitize_info(
         json.loads(Path(payload["info_path"]).read_text(encoding="utf-8")),
@@ -142,6 +190,8 @@ def download_job(payload: dict[str, Any]) -> None:
         "_performance_path": payload.get("performance_path"),
     }
     with YoutubeDL(options) as ydl:
+        load_instagram_cookies(ydl, info.get('webpage_url') or info.get('original_url') or '',
+                               payload.get('instagram_cookies_file'))
         ydl.process_ie_result(info, download=True)
 
 
@@ -214,6 +264,7 @@ def worker_main() -> int:
         if action == "extract":
             url = normalize_url(payload["url"])
             with YoutubeDL(base_options()) as ydl:
+                load_instagram_cookies(ydl, url, payload.get('instagram_cookies_file'))
                 info = extract_job(url, ydl)
                 if not isinstance(info, dict) or info.get("_type", "video") != "video":
                     raise ValueError("Unavailable individual video")

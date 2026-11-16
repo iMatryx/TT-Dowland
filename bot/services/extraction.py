@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 from typing import Any, Protocol
 
 from pydantic import ValidationError
@@ -133,15 +134,19 @@ async def run_worker(action: str, payload: Path, timeout: float) -> None:
 
 
 class YtdlpExtractor:
-    """Use yt-dlp without cookies, authentication, or geo bypass."""
+    """Isolated yt-dlp extraction with an optional operator-provided Instagram session."""
 
-    def __init__(self, timeout: float = 60) -> None:
+    def __init__(self, timeout: float = 60, *, instagram_cookies_file: Path | None = None) -> None:
         self.timeout = timeout
+        self.instagram_cookies_file = instagram_cookies_file
 
     async def extract(self, url: str, workspace: Path) -> Extraction:
         info_path = workspace / "info.json"
         payload = workspace / "extract.json"
-        payload.write_text(json.dumps({"url": url, "output": str(info_path)}), encoding="utf-8")
+        data = {"url": url, "output": str(info_path)}
+        if self.instagram_cookies_file and urlsplit(url).hostname == 'www.instagram.com':
+            data['instagram_cookies_file'] = str(self.instagram_cookies_file)
+        payload.write_text(json.dumps(data), encoding="utf-8")
         await run_worker("extract", payload, self.timeout)
         def parse() -> VideoInfo:
             if not info_path.is_file() or info_path.stat().st_size > 10 * 1024 * 1024:

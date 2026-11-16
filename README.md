@@ -24,11 +24,12 @@ Deployment-ul și conectarea reală se fac ulterior, explicit.
    este stabilit din `imagePost`, nu din această rută.
    Shorts și Reels folosesc extractoarele yt-dlp `Youtube`, respectiv `Instagram`;
    metadatele și fluxurile se verifică pentru fiecare postare.
-3. Video: mereu `quality="high"`, `watermark="without"`, inclusiv pentru utilizatorii
-   cu setări vechi. Se alege cea mai înaltă rezoluție disponibilă dintre variantele
+3. Video: calitate maximă, cu preferință pentru surse fără watermark, inclusiv
+   pentru utilizatorii cu setări vechi. Se alege cea mai înaltă rezoluție disponibilă dintre variantele
    identificate de sursă fără watermark, apoi FPS și bitrate. Nu există opțiuni
    pentru reducerea calității sau acceptarea unui watermark. Dacă lipsesc variantele
-   identificate fără watermark, video-ul nu se descarcă; audio poate rămâne disponibil.
+   identificate fără watermark, se descarcă cea mai bună variantă cu statut necunoscut.
+   Statutul rămâne necunoscut; variantele marcate explicit cu watermark sunt respinse.
    „Ca fișier” trimite originalul variantei selectate ca document. Dimensiunile din
    meniu sunt **raportate de sursă**; caption-ul după descărcare arată rezoluția verificată.
    MP4/H.264 compatibil, cu AAC sau fără audio, se reutilizează. Pentru redarea
@@ -61,7 +62,9 @@ Deployment-ul și conectarea reală se fac ulterior, explicit.
    Testele live opționale se activează cu `YOUTUBE_SHORTS_TEST_URL` și
    `INSTAGRAM_REELS_TEST_URL`, separat de fixture-urile TikTok.
 
-Nu există upscaling, blur, crop, login, cookie-uri importate sau geo bypass.
+Nu există upscaling, blur, crop sau geo bypass. Implicit, extracția este anonimă.
+Instagram poate folosi opțional un fișier de sesiune furnizat de administrator prin
+`INSTAGRAM_COOKIES_FILE`; vezi [configurarea pe Oracle](docs/instagram-session.md).
 4K/1440p/1080p/720p sunt selectate doar când dimensiunile sunt raportate; nu se
 inventează rezoluție, FPS sau bitrate. Autorul este păstrat în metadate/caption.
 Identificarea variantei video fără overlay TikTok se bazează pe proveniența URL-ului
@@ -301,8 +304,9 @@ Analiza, descărcarea și trimiterea editează același mesaj de progres. Un mes
 nou de stare este creat doar dacă Telegram confirmă că originalul nu mai poate
 fi editat. Videoclipul, fișierul sau audio-ul livrat are propriul buton Info.
 
-Politica sursei este fixă: calitate maximă și numai variante identificate fără
-watermark. Nu există buton Preferințe, comandă `/settings`, model de preferințe
+Politica sursei este fixă: calitate maximă dintre variantele identificate fără
+watermark, cu fallback la statut necunoscut dacă acestea lipsesc.
+Nu există buton Preferințe, comandă `/settings`, model de preferințe
 sau argumente pentru schimbarea calității/watermark-ului în pipeline. Documentele,
 ZIP și preview-urile rămân separate. Lipsa watermark-ului este evaluată din
 metadatele sursei, fără verificare vizuală sau ștergerea artificială a marcajelor.

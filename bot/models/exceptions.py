@@ -52,6 +52,10 @@ class PrivateVideoError(VideoUnavailableError):
     """Private or login-required content is not supported."""
 
 
+class InstagramAccessError(VideoUnavailableError):
+    """Instagram requires a valid session or has limited server access."""
+
+
 class RegionalRestrictionError(VideoUnavailableError):
     """The service reports a regional restriction."""
 
@@ -83,6 +87,9 @@ class FileSizeLimitError(ApplicationError):
 def classify_error(message: str) -> ApplicationError:
     """Map explicit upstream signals; ambiguous failures stay unavailable."""
     text = message.lower()
+    if 'instagram cookies file' in text or ('[instagram]' in text and any(
+            signal in text for signal in ('rate-limit', 'login page', 'login required', 'login_required'))):
+        return InstagramAccessError('Instagram requires a valid operator-provided session or has limited server access.')
     if "unsafe network destination" in text:
         return UnsafeAddressError("Unsafe network destination blocked.")
     if "no space left" in text or "errno 28" in text:

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     admin_user_ids: str = Field(default="", validation_alias="ADMIN_USER_IDS", repr=False, exclude=True)
     restart_enabled: bool = Field(default=False, validation_alias="RESTART_ENABLED")
     download_dir: Path = Field(default=Path("downloads"), validation_alias="DOWNLOAD_DIR")
+    instagram_cookies_file: Path | None = Field(default=None, validation_alias="INSTAGRAM_COOKIES_FILE", repr=False)
     max_file_size_mb: int = Field(default=50, ge=1, validation_alias="MAX_FILE_SIZE_MB")
     max_retained_originals_mb: int = Field(default=512, ge=0, validation_alias="MAX_RETAINED_ORIGINALS_MB")
     max_concurrent_downloads: int = Field(
@@ -88,6 +89,20 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return value.strip() or None
         return value
+
+    @field_validator("instagram_cookies_file", mode="before")
+    @classmethod
+    def normalize_instagram_cookies_file(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+        if value is not None:
+            try:
+                return Path(value).expanduser()
+            except RuntimeError as exc:
+                raise ValueError("Unable to expand Instagram cookies path") from exc
+        return None
 
     @field_validator("download_dir", "cache_db_path", mode="before")
     @classmethod

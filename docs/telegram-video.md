@@ -16,10 +16,11 @@ format de pixeli, container, pachete, dimensiuni și durată. Datele extractorul
 nu decid singure compatibilitatea. Un MP4 verificat cu H.264 și AAC (sau fără
 sunet), în format de pixeli `yuv420p`/`yuvj420p`, poate fi trimis direct.
 
-Politica este fixă pentru toate cererile: calitate maximă fără watermark. Se alege cea
+Politica este fixă pentru toate cererile: calitate maximă, preferând surse fără watermark. Se alege cea
 mai bună variantă identificată fără watermark, comparând rezoluția (latura scurtă,
-apoi suprafața), FPS și bitrate raportate. Variantele cu statut necunoscut sau
-cu watermark nu sunt fallback-uri. Dacă sursa nu oferă o variantă eligibilă,
+apoi suprafața), FPS și bitrate raportate. Dacă acestea lipsesc, se acceptă cea mai
+bună variantă cu statut necunoscut, păstrând această etichetă. Variantele marcate
+explicit cu watermark sunt respinse. Dacă sursa nu oferă o variantă eligibilă,
 botul explică indisponibilitatea; audio rămâne separat. Nu se elimină artificial
 marcaje și nu se garantează vizual metadatele sursei.
 
