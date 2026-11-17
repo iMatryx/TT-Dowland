@@ -1,6 +1,10 @@
 """Media UI translations keyed by the original Romanian template."""
 
 MEDIA = {
+    'YouTube solicită verificare anti-bot sau o sesiune validă. Administratorul trebuie să configureze ori să reînnoiască sesiunea YouTube. Această eroare nu confirmă că videoclipul este privat.': {
+        'ru': 'YouTube требует проверку на бота или действующую сессию. Администратору необходимо настроить или обновить сессию YouTube. Эта ошибка не подтверждает, что видео приватное.',
+        'en': 'YouTube requires an anti-bot check or a valid session. The administrator needs to configure or renew the YouTube session. This error does not confirm that the video is private.',
+    },
     'Instagram a limitat accesul de pe server sau solicită autentificare. Administratorul trebuie să configureze ori să reînnoiască sesiunea Instagram.': {
         'ru': 'Instagram ограничил доступ с сервера или требует входа. Администратору необходимо настроить или обновить сессию Instagram.',
         'en': 'Instagram has limited server access or requires authentication. The administrator needs to configure or renew the Instagram session.',

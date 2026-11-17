@@ -2,6 +2,8 @@
 
 Pentru eroarea Instagram `rate-limit for accessing posts anonymously`, vezi
 [configurarea sesiunii Instagram](docs/instagram-session.md).
+Pentru YouTube `Sign in to confirm you’re not a bot`, vezi
+[configurarea sesiunii YouTube](docs/youtube-session.md).
 
 Imaginea folosește implicit `python:3.12-slim-trixie`. În testul comparativ pe
 Mac ARM64, linkul TikTok verificat a eșuat în imaginea Bookworm și a expus 8

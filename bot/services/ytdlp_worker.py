@@ -134,7 +134,20 @@ def selection_callback(video_id: str, audio_id: str | None) -> Any:
 
 def load_instagram_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None) -> None:
     """Import only Instagram cookies into memory; never rewrite the mounted secret."""
-    if not cookie_path or urlsplit(url).hostname != 'www.instagram.com':
+    _load_source_cookies(ydl, url, cookie_path, platform='Instagram', domain='instagram.com',
+                         session_names={'sessionid'})
+
+
+def load_youtube_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None) -> None:
+    """Import only YouTube cookies; keep the Google session scoped to YouTube."""
+    _load_source_cookies(ydl, url, cookie_path, platform='YouTube', domain='youtube.com',
+                         session_names={'SID', '__Secure-1PSID', '__Secure-3PSID', 'SAPISID',
+                                        '__Secure-1PAPISID', '__Secure-3PAPISID', 'LOGIN_INFO'})
+
+
+def _load_source_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None, *,
+                         platform: str, domain: str, session_names: set[str]) -> None:
+    if not cookie_path or urlsplit(url).hostname != f'www.{domain}':
         return
     try:
         if Path(cookie_path).stat().st_size > 1024 * 1024:
@@ -146,12 +159,12 @@ def load_instagram_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None) ->
             # yt-dlp normalizes expires=0 to a session cookie only after loading.
             jar.load(cookie_path, ignore_expires=True)
         cookies = [cookie for cookie in jar if not cookie.is_expired() and (
-            cookie.domain.lstrip('.') == 'instagram.com'
-            or cookie.domain.lstrip('.').endswith('.instagram.com'))]
-        if not any(cookie.name == 'sessionid' and cookie.value for cookie in cookies):
-            raise ValueError('Missing valid Instagram session')
+            cookie.domain.lstrip('.') == domain
+            or cookie.domain.lstrip('.').endswith(f'.{domain}'))]
+        if not any(cookie.name in session_names and cookie.value for cookie in cookies):
+            raise ValueError('Missing valid session')
     except (OSError, ValueError):
-        raise ValueError('Instagram cookies file is missing, unreadable, invalid, or expired') from None
+        raise ValueError(f'{platform} cookies file is missing, unreadable, invalid, or expired') from None
     for cookie in cookies:
         ydl.cookiejar.set_cookie(cookie)
 
@@ -192,6 +205,8 @@ def download_job(payload: dict[str, Any]) -> None:
     with YoutubeDL(options) as ydl:
         load_instagram_cookies(ydl, info.get('webpage_url') or info.get('original_url') or '',
                                payload.get('instagram_cookies_file'))
+        load_youtube_cookies(ydl, info.get('webpage_url') or info.get('original_url') or '',
+                             payload.get('youtube_cookies_file'))
         ydl.process_ie_result(info, download=True)
 
 
@@ -265,6 +280,7 @@ def worker_main() -> int:
             url = normalize_url(payload["url"])
             with YoutubeDL(base_options()) as ydl:
                 load_instagram_cookies(ydl, url, payload.get('instagram_cookies_file'))
+                load_youtube_cookies(ydl, url, payload.get('youtube_cookies_file'))
                 info = extract_job(url, ydl)
                 if not isinstance(info, dict) or info.get("_type", "video") != "video":
                     raise ValueError("Unavailable individual video")

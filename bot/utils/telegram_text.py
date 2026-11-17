@@ -10,7 +10,7 @@ from bot.models.exceptions import (
     InvalidURLError, MissingFFmpegError, NetworkError, PrivateVideoError,
     RegionalRestrictionError, TelegramDeliveryError, VideoUnavailableError, DeletedVideoError,
     QueueFullError, RateLimitedError,
-    SourceVariantUnavailableError, InstagramAccessError,
+    SourceVariantUnavailableError, InstagramAccessError, YouTubeAccessError,
 )
 
 START_TEXT = (
@@ -54,6 +54,7 @@ def error_text(exc: Exception) -> str:
     if isinstance(exc, RateLimitedError):
         return tr('⏳ Ai atins limita temporară. Încearcă din nou în {value0} secunde.', value0=exc.retry_after)
     messages = (
+        (YouTubeAccessError, tr('YouTube solicită verificare anti-bot sau o sesiune validă. Administratorul trebuie să configureze ori să reînnoiască sesiunea YouTube. Această eroare nu confirmă că videoclipul este privat.')),
         (InstagramAccessError, tr('Instagram a limitat accesul de pe server sau solicită autentificare. Administratorul trebuie să configureze ori să reînnoiască sesiunea Instagram.')),
         (SourceVariantUnavailableError, tr('Sursa nu oferă o variantă fără watermark sau cu statut necunoscut. Variantele marcate explicit cu watermark nu sunt trimise.')),
         (QueueFullError, tr('Coada este plină sau botul se oprește. Încearcă din nou mai târziu.')),

@@ -76,7 +76,7 @@ def test_caption_factories_render_localized_variants_without_mutating_metadata(m
 
 @pytest.mark.parametrize('language', ['ru', 'en'])
 def test_each_domain_error_is_localized_without_exposing_raw_exception(language):
-    error_classes = [exceptions.SourceVariantUnavailableError, exceptions.QueueFullError,
+    error_classes = [exceptions.YouTubeAccessError, exceptions.SourceVariantUnavailableError, exceptions.QueueFullError,
         exceptions.InvalidURLError, exceptions.FileSizeLimitError, exceptions.DeletedVideoError,
         exceptions.PrivateVideoError, exceptions.RegionalRestrictionError, exceptions.DownloadTimeoutError,
         exceptions.NetworkError, exceptions.CorruptFileError, exceptions.InsufficientSpaceError,

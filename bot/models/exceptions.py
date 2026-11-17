@@ -56,6 +56,10 @@ class InstagramAccessError(VideoUnavailableError):
     """Instagram requires a valid session or has limited server access."""
 
 
+class YouTubeAccessError(VideoUnavailableError):
+    """YouTube requires a session or an anti-bot verification."""
+
+
 class RegionalRestrictionError(VideoUnavailableError):
     """The service reports a regional restriction."""
 
@@ -87,6 +91,9 @@ class FileSizeLimitError(ApplicationError):
 def classify_error(message: str) -> ApplicationError:
     """Map explicit upstream signals; ambiguous failures stay unavailable."""
     text = message.lower()
+    if 'youtube cookies file' in text or ('[youtube]' in text and any(
+            signal in text for signal in ('not a bot', 'unusual traffic', 'automated queries'))):
+        return YouTubeAccessError('YouTube requires a valid operator-provided session or anti-bot verification.')
     if 'instagram cookies file' in text or ('[instagram]' in text and any(
             signal in text for signal in ('rate-limit', 'login page', 'login required', 'login_required'))):
         return InstagramAccessError('Instagram requires a valid operator-provided session or has limited server access.')

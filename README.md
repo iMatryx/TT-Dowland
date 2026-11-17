@@ -63,8 +63,10 @@ Deployment-ul și conectarea reală se fac ulterior, explicit.
    `INSTAGRAM_REELS_TEST_URL`, separat de fixture-urile TikTok.
 
 Nu există upscaling, blur, crop sau geo bypass. Implicit, extracția este anonimă.
-Instagram poate folosi opțional un fișier de sesiune furnizat de administrator prin
-`INSTAGRAM_COOKIES_FILE`; vezi [configurarea pe Oracle](docs/instagram-session.md).
+Instagram și YouTube pot folosi opțional fișiere de sesiune separate furnizate de
+administrator prin `INSTAGRAM_COOKIES_FILE`, respectiv `YOUTUBE_COOKIES_FILE`.
+Vezi configurarea pentru [Instagram](docs/instagram-session.md) și
+[YouTube pe Oracle](docs/youtube-session.md).
 4K/1440p/1080p/720p sunt selectate doar când dimensiunile sunt raportate; nu se
 inventează rezoluție, FPS sau bitrate. Autorul este păstrat în metadate/caption.
 Identificarea variantei video fără overlay TikTok se bazează pe proveniența URL-ului

@@ -2,6 +2,8 @@
 
 Pentru eroarea Instagram `rate-limit for accessing posts anonymously`, vezi
 [configurarea sesiunii Instagram](docs/instagram-session.md).
+Pentru YouTube `Sign in to confirm you’re not a bot`, vezi
+[configurarea sesiunii YouTube](docs/youtube-session.md).
 
 **Pentru VM-ul existent și actualizare la push pe `main`, folosește
 [ghidul pas cu pas DEPLOY_AUTO.md](DEPLOY_AUTO.md).** Ghidul de mai jos rămâne

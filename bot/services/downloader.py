@@ -42,7 +42,8 @@ class TikTokDownloader:
             raise ValueError("timeout must be positive")
         self.settings = settings
         self.extractor = CachedExtractor(
-            extractor or YtdlpExtractor(timeout=min(timeout, 60), instagram_cookies_file=settings.instagram_cookies_file), root=settings.download_dir.expanduser().resolve(),
+            extractor or YtdlpExtractor(timeout=min(timeout, 60), instagram_cookies_file=settings.instagram_cookies_file,
+                                       youtube_cookies_file=settings.youtube_cookies_file), root=settings.download_dir.expanduser().resolve(),
             ttl=settings.analysis_cache_ttl_seconds, capacity=settings.analysis_cache_capacity,
             max_bytes=settings.analysis_cache_max_mb * 1024 * 1024,
             enabled=settings.cache_enabled, concurrency=settings.max_concurrent_downloads,
@@ -119,6 +120,8 @@ class TikTokDownloader:
                 "media_dir": str(media_dir), "max_bytes": limit, "performance_path": str(timings),
                 "instagram_cookies_file": (str(self.settings.instagram_cookies_file)
                     if self.settings.instagram_cookies_file and urlsplit(url).hostname == 'www.instagram.com' else None),
+                "youtube_cookies_file": (str(self.settings.youtube_cookies_file)
+                    if self.settings.youtube_cookies_file and urlsplit(url).hostname == 'www.youtube.com' else None),
             }), encoding="utf-8")
             with media_transfer(extraction), download_stage(timings):
                 await run_worker("download", payload, self.timeout)
