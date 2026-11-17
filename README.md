@@ -13,7 +13,8 @@ Deployment-ul și conectarea reală se fac ulterior, explicit.
 ## Funcționare și limite
 
 1. Utilizatorul trimite un link TikTok, `youtube.com/shorts/ID`, `youtu.be/ID`
-   sau `instagram.com/reel/ID/` (și `/reels/ID/`). Botul validează separat gazdele
+   sau `instagram.com/reel/ID/` (și `/reels/ID/` ori `/p/ID/` pentru o postare video).
+   Botul validează separat gazdele
    și rutele fiecărei platforme și elimină parametrii de tracking. Linkurile YouTube
    scurte sunt tratate ca linkuri către un singur clip; profilurile, playlisturile
    și rutele YouTube `/watch` nu sunt acceptate.

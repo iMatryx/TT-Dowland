@@ -29,6 +29,8 @@ from bot.utils.network import guard_sockets
 class PublicInstagramIE(InstagramIE):
     """Preserve the public-only policy when an operator session is configured."""
 
+    IE_NAME = InstagramIE.IE_NAME
+
     @classmethod
     def ie_key(cls):
         return 'Instagram'

@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 from bot.config import Settings
-from bot.models.exceptions import classify_error
+from bot.models.exceptions import InstagramAccessError, NetworkError, classify_error
 from bot.services import extraction, ytdlp_worker
 from bot.utils.telegram_text import error_text
-from yt_dlp.utils import ExtractorError
+from yt_dlp.utils import DownloadError, ExtractorError
 
 
 URL = 'https://www.instagram.com/reel/Dfy8QznNhn5/'
@@ -21,6 +21,40 @@ def test_instagram_anonymous_limit_has_actionable_error():
     assert 'Instagram' in message
     assert 'sesiun' in message.lower()
     assert 'Dfy8QznNhn5' not in message
+
+
+def test_real_instagram_extractor_preserves_access_error(monkeypatch):
+    """Exercise yt-dlp error formatting, including the custom extractor's name."""
+    def login_required(self, url):
+        self.raise_login_required(
+            'The webpage request was redirected to the login page. '
+            'You have exceeded the rate-limit for accessing posts anonymously')
+
+    monkeypatch.setattr(ytdlp_worker.PublicInstagramIE, '_real_extract', login_required)
+    # Initialization fetches Instagram's homepage before _real_extract.
+    monkeypatch.setattr(ytdlp_worker.PublicInstagramIE, '_real_initialize', lambda self: None)
+    with ytdlp_worker.YoutubeDL(ytdlp_worker.base_options()) as ydl:
+        with pytest.raises(DownloadError) as exc:
+            ydl.extract_info(URL, download=False, ie_key='Instagram')
+    assert isinstance(classify_error(str(exc.value)), InstagramAccessError)
+
+
+@pytest.mark.parametrize('prefix', ['Instagram', 'PublicInstagram'])
+@pytest.mark.parametrize('reason', [
+    'The webpage request was redirected to the login page. '
+    'You have exceeded the rate-limit for accessing posts anonymously.',
+    'Unable to download webpage: HTTP Error 429: Too Many Requests',
+    'login_required',
+])
+def test_instagram_access_denials_are_not_generic_connection_errors(prefix, reason):
+    error = classify_error(f'ERROR: [{prefix}] clip: {reason}')
+    assert isinstance(error, InstagramAccessError)
+    assert 'sesiun' in error_text(error).lower()
+
+
+def test_instagram_transport_failure_remains_a_network_error():
+    error = classify_error('ERROR: [Instagram] clip: Unable to download webpage: Connection reset by peer')
+    assert type(error) is NetworkError
 
 
 def test_optional_instagram_cookie_setting():

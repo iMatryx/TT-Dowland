@@ -94,8 +94,10 @@ def classify_error(message: str) -> ApplicationError:
     if 'youtube cookies file' in text or ('[youtube]' in text and any(
             signal in text for signal in ('not a bot', 'unusual traffic', 'automated queries'))):
         return YouTubeAccessError('YouTube requires a valid operator-provided session or anti-bot verification.')
-    if 'instagram cookies file' in text or ('[instagram]' in text and any(
-            signal in text for signal in ('rate-limit', 'login page', 'login required', 'login_required'))):
+    if 'instagram cookies file' in text or (
+            any(prefix in text for prefix in ('[instagram]', '[publicinstagram]')) and any(
+                signal in text for signal in ('rate-limit', 'login page', 'login required',
+                                             'login_required', 'http error 429', 'status code 429'))):
         return InstagramAccessError('Instagram requires a valid operator-provided session or has limited server access.')
     if "unsafe network destination" in text:
         return UnsafeAddressError("Unsafe network destination blocked.")

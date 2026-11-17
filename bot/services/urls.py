@@ -15,7 +15,7 @@ VIDEO_PATH = re.compile(r"/@[A-Za-z0-9_.-]+/(?:video|photo)/[0-9]+/?\Z")
 SHORT_PATH = re.compile(r"/(?:t/)?[A-Za-z0-9_-]+/?\Z")
 YOUTUBE_PATH = re.compile(r"/shorts/([A-Za-z0-9_-]{11})/?\Z")
 YOUTUBE_SHORT_PATH = re.compile(r"/([A-Za-z0-9_-]{11})/?\Z")
-INSTAGRAM_PATH = re.compile(r"/reels?/([A-Za-z0-9_-]+)/?\Z")
+INSTAGRAM_PATH = re.compile(r"/(reels?|p)/([A-Za-z0-9_-]+)/?\Z")
 
 
 def normalize_url(value: str) -> str:
@@ -42,8 +42,9 @@ def normalize_url(value: str) -> str:
     if host in INSTAGRAM_HOSTS:
         match = INSTAGRAM_PATH.fullmatch(parts.path)
         if not match:
-            raise InvalidURLError("Expected an individual Instagram Reel link.")
-        return f"https://www.instagram.com/reel/{match[1]}/"
+            raise InvalidURLError("Expected an individual Instagram Reel or post link.")
+        route = "p" if match[1] == "p" else "reel"
+        return f"https://www.instagram.com/{route}/{match[2]}/"
     if host in {"www.tiktok.com", "tiktok.com"} and VIDEO_PATH.fullmatch(parts.path):
         host = "www.tiktok.com"
         path = parts.path.rstrip("/")

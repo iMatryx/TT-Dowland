@@ -16,6 +16,9 @@ from bot.services import ytdlp_worker
     ('https://youtu.be/AbCd_123-xy?si=x', 'https://www.youtube.com/shorts/AbCd_123-xy'),
     ('instagram.com/reel/ABC_123-xy/?igsh=share', 'https://www.instagram.com/reel/ABC_123-xy/'),
     ('https://www.instagram.com/reels/ABC_123-xy/', 'https://www.instagram.com/reel/ABC_123-xy/'),
+    ('https://www.instagram.com/p/Df1eylzikqM/?obrf=MXRkZnlvMWdpYTNnYw==',
+     'https://www.instagram.com/p/Df1eylzikqM/'),
+    ('instagram.com/p/ABC_123-xy?igsh=share', 'https://www.instagram.com/p/ABC_123-xy/'),
 ])
 def test_platform_urls(value, expected):
     assert normalize_url(value) == expected
@@ -55,6 +58,7 @@ async def test_tiktok_redirect_cannot_switch_platforms():
 @pytest.mark.parametrize('url,key', [
     ('https://www.youtube.com/shorts/AbCd_123-xy', 'Youtube'),
     ('https://www.instagram.com/reel/ABC/', 'Instagram'),
+    ('https://www.instagram.com/p/Df1eylzikqM/', 'Instagram'),
 ])
 def test_platform_extractors_are_explicit(url, key):
     ydl = SimpleNamespace(extract_info=Mock(return_value={'id': 'clip'}))
