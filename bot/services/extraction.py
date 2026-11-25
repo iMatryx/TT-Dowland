@@ -14,7 +14,8 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from bot.models import VideoFormat, VideoInfo, PhotoInfo
-from bot.models.exceptions import VideoUnavailableError, NetworkError, classify_error
+from bot.models.exceptions import VideoUnavailableError, NetworkError, InstagramAccessError, classify_error
+from bot.services.urls import INSTAGRAM_HOSTS, YOUTUBE_HOSTS
 from bot.utils.process import run_process
 
 
@@ -143,12 +144,17 @@ class YtdlpExtractor:
         self.youtube_cookies_file = youtube_cookies_file
 
     async def extract(self, url: str, workspace: Path) -> Extraction:
+        host = urlsplit(url).hostname
+        if host in INSTAGRAM_HOSTS and not self.instagram_cookies_file:
+            raise InstagramAccessError(
+                "No Instagram session is configured; set INSTAGRAM_COOKIES_FILE to a valid Netscape cookie file."
+            )
         info_path = workspace / "info.json"
         payload = workspace / "extract.json"
         data = {"url": url, "output": str(info_path)}
-        if self.instagram_cookies_file and urlsplit(url).hostname == 'www.instagram.com':
+        if host in INSTAGRAM_HOSTS and self.instagram_cookies_file:
             data['instagram_cookies_file'] = str(self.instagram_cookies_file)
-        if self.youtube_cookies_file and urlsplit(url).hostname == 'www.youtube.com':
+        if host in YOUTUBE_HOSTS and self.youtube_cookies_file:
             data['youtube_cookies_file'] = str(self.youtube_cookies_file)
         payload.write_text(json.dumps(data), encoding="utf-8")
         await run_worker("extract", payload, self.timeout)

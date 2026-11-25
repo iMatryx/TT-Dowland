@@ -149,7 +149,7 @@ def load_youtube_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None) -> N
 
 def _load_source_cookies(ydl: YoutubeDL, url: str, cookie_path: str | None, *,
                          platform: str, domain: str, session_names: set[str]) -> None:
-    if not cookie_path or urlsplit(url).hostname != f'www.{domain}':
+    if not cookie_path or urlsplit(url).hostname not in {domain, f'www.{domain}'}:
         return
     try:
         if Path(cookie_path).stat().st_size > 1024 * 1024:

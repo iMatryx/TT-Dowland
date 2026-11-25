@@ -119,9 +119,9 @@ class TikTokDownloader:
                 "audio_id": selection.audio.format_id if selection.audio else None,
                 "media_dir": str(media_dir), "max_bytes": limit, "performance_path": str(timings),
                 "instagram_cookies_file": (str(self.settings.instagram_cookies_file)
-                    if self.settings.instagram_cookies_file and urlsplit(url).hostname == 'www.instagram.com' else None),
+                    if self.settings.instagram_cookies_file and urlsplit(url).hostname in {'instagram.com', 'www.instagram.com'} else None),
                 "youtube_cookies_file": (str(self.settings.youtube_cookies_file)
-                    if self.settings.youtube_cookies_file and urlsplit(url).hostname == 'www.youtube.com' else None),
+                    if self.settings.youtube_cookies_file and urlsplit(url).hostname in {'youtube.com', 'www.youtube.com'} else None),
             }), encoding="utf-8")
             with media_transfer(extraction), download_stage(timings):
                 await run_worker("download", payload, self.timeout)

@@ -131,5 +131,8 @@ async def test_extractor_passes_cookie_path_only_for_youtube(tmp_path, monkeypat
         Path(data['output']).write_text(json.dumps({'id': 'clip', 'formats': []}))
 
     monkeypatch.setattr(extraction, 'run_worker', worker)
-    extractor = extraction.YtdlpExtractor(youtube_cookies_file=Path('/run/secrets/youtube.txt'))
+    extractor = extraction.YtdlpExtractor(
+        youtube_cookies_file=Path('/run/secrets/youtube.txt'),
+        instagram_cookies_file=Path('/run/secrets/instagram.txt'),
+    )
     await extractor.extract(url, tmp_path)
