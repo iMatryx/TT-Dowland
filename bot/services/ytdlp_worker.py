@@ -21,9 +21,18 @@ from yt_dlp.networking import Request
 from yt_dlp.cookies import YoutubeDLCookieJar
 
 from bot.services.tiktok_sources import photo_metadata, annotate_video_sources
+from bot.services.instagram_sources import photo_metadata as instagram_photo_metadata
 
 from bot.services.urls import normalize_url
 from bot.utils.network import guard_sockets
+
+
+class InstagramPhotoPost(Exception):
+    """Return photos before yt-dlp applies its video-only result processing."""
+
+    def __init__(self, info: dict) -> None:
+        self.info = info
+        super().__init__('Instagram photo post')
 
 
 class PublicInstagramIE(InstagramIE):
@@ -39,6 +48,10 @@ class PublicInstagramIE(InstagramIE):
         product = product_info[0] if isinstance(product_info, list) and product_info else product_info
         if isinstance(product, dict) and (product.get('user') or {}).get('is_private'):
             raise ExtractorError('Private Instagram posts are not supported', expected=True)
+        if isinstance(product, dict):
+            photos = instagram_photo_metadata(product, kwargs.get('video_id') or (args[0] if args else None))
+            if photos is not None:
+                raise InstagramPhotoPost(photos)
         return super()._extract_product(product_info, *args, **kwargs)
 
 
@@ -219,7 +232,11 @@ def extract_job(url: str, ydl: YoutubeDL) -> dict:
     if host == 'www.youtube.com':
         return ydl.extract_info(url, download=False, ie_key='Youtube')
     if host == 'www.instagram.com':
-        return ydl.extract_info(url, download=False, ie_key='Instagram')
+        try:
+            return ydl.extract_info(url, download=False, ie_key='Instagram')
+        except InstagramPhotoPost as post:
+            return {**post.info, 'webpage_url': url, 'original_url': url,
+                    'extractor': 'Instagram', 'extractor_key': 'Instagram'}
     extractor = TikTokIE(ydl)
     video_id = url.rstrip('/').rsplit('/', 1)[-1]
     # The /photo/ viewer can omit webapp.video-detail. TikTok serves the
