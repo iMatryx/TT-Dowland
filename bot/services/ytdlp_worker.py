@@ -266,6 +266,7 @@ def photo_download_job(payload: dict) -> None:
     total = 0
     limit = int(payload['max_bytes'])
     with YoutubeDL(base_options()) as ydl:
+        load_instagram_cookies(ydl, payload['url'], payload.get('instagram_cookies_file'))
         for index, photo in enumerate(payload['photos']):
             path = Path(payload['media_dir']) / f'{index + 1:04d}.img'
             for url in photo['urls']:
@@ -314,7 +315,18 @@ def worker_main() -> int:
             raise ValueError("Invalid worker action")
     except Exception as exc:
         # The parent maps this internally and only prints a sanitized domain error.
-        print(json.dumps({"error": str(exc)[-4000:]}))
+        status = None
+        cause = exc
+        for _ in range(5):
+            value = getattr(cause, 'status', None)
+            if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
+                status = value
+                break
+            cause = getattr(cause, 'cause', None) or getattr(cause, '__cause__', None)
+            if cause is None:
+                break
+        print(json.dumps({"error": str(exc)[-4000:],
+                          "error_type": type(exc).__name__, "http_status": status}))
         return 1
     return 0
 

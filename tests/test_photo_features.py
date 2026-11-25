@@ -228,7 +228,12 @@ def test_worker_photo_network_mirror_and_stream_size_limit(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_photo_pipeline_real_image_probe_and_decode(tmp_path, monkeypatch):
+@pytest.mark.parametrize('url,expected_cookie', [
+    (URL, None),
+    ('https://www.instagram.com/p/ABC/', '/run/secrets/instagram.txt'),
+    ('https://instagram.com/p/ABC/', '/run/secrets/instagram.txt'),
+])
+async def test_photo_pipeline_real_image_probe_and_decode(tmp_path, monkeypatch, url, expected_cookie):
     import binascii
     import struct
     import zlib
@@ -246,13 +251,15 @@ async def test_photo_pipeline_real_image_probe_and_decode(tmp_path, monkeypatch)
 
     async def worker(action, payload, timeout):
         data = json.loads(payload.read_text())
+        assert data.get('instagram_cookies_file') == expected_cookie
         (photos.Path(data['media_dir']) / '0001.img').write_bytes(png)
 
     monkeypatch.setattr(photos, 'run_worker', worker)
-    info = VideoInfo(id='123', webpage_url=URL, media_type='photo', photos=[PhotoInfo(has_watermark=False, urls=['https://cdn.example/a'])])
+    info = VideoInfo(id='123', webpage_url=url, media_type='photo', photos=[PhotoInfo(has_watermark=False, urls=['https://cdn.example/a'])])
     work = tmp_path / 'work'
     work.mkdir()
-    result = await photos.download_photos(Extraction(info, work / 'info.json'), work, Settings(DOWNLOAD_DIR=tmp_path), 10)
+    result = await photos.download_photos(Extraction(info, work / 'info.json'), work,
+        Settings(DOWNLOAD_DIR=tmp_path, INSTAGRAM_COOKIES_FILE='/run/secrets/instagram.txt'), 10)
     assert (result.photos[0].width, result.photos[0].height) == (2, 3)
     assert result.photos[0].file_path.read_bytes() == png
     result.cleanup()

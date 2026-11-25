@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import zipfile
+from urllib.parse import urlsplit
 
 from bot.utils.performance import stage
 from bot.config import Settings
@@ -14,6 +15,7 @@ from bot.models import DownloadResult, PhotoFile
 from bot.models.exceptions import CorruptFileError, FileSizeLimitError, InsufficientSpaceError
 from bot.services.extraction import Extraction, run_worker, media_transfer
 from bot.services.media import verify_media
+from bot.services.urls import INSTAGRAM_HOSTS
 
 
 async def download_photos(extraction: Extraction, workspace: Path, settings: Settings, timeout: float) -> DownloadResult:
@@ -28,6 +30,9 @@ async def download_photos(extraction: Extraction, workspace: Path, settings: Set
     payload = workspace / 'photos.json'
     payload.write_text(json.dumps({'photos': [p.model_dump(mode='json') for p in extraction.video.photos],
                                   'url': str(extraction.video.webpage_url), 'media_dir': str(media),
+                                  'instagram_cookies_file': (str(settings.instagram_cookies_file)
+                                      if settings.instagram_cookies_file and
+                                      urlsplit(str(extraction.video.webpage_url)).hostname in INSTAGRAM_HOSTS else None),
                                   'max_bytes': limit}), encoding='utf-8')
     with media_transfer(extraction), stage('download'):
         await run_worker('photos', payload, timeout)

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import asyncio
 import json
+import logging
 import math
 from pathlib import Path
 import re
@@ -17,6 +18,8 @@ from bot.models import VideoFormat, VideoInfo, PhotoInfo
 from bot.models.exceptions import VideoUnavailableError, NetworkError, InstagramAccessError, classify_error
 from bot.services.urls import INSTAGRAM_HOSTS, YOUTUBE_HOSTS
 from bot.utils.process import run_process
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -126,11 +129,21 @@ async def run_worker(action: str, payload: Path, timeout: float) -> None:
         sys.executable, "-m", "bot.services.ytdlp_worker", action, str(payload), timeout=timeout,
     )
     if code:
+        error = {}
         try:
             error = json.loads(stdout)
             message = str(error.get("error", "unavailable"))
         except (ValueError, AttributeError):
             message = "Extractor process failed"
+        details = error if isinstance(error, dict) else {}
+        error_type = details.get('error_type')
+        if not isinstance(error_type, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,63}', error_type):
+            error_type = 'unknown'
+        status = details.get('http_status')
+        if type(status) is not int or not 100 <= status <= 599:
+            status = None
+        logger.warning('Media worker failed action=%s error_type=%s http_status=%s',
+                       action if action in {'extract', 'download', 'photos'} else 'unknown', error_type, status)
         raise classify_error(message)
 
 

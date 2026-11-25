@@ -1,4 +1,5 @@
 import json
+import io
 from pathlib import Path
 
 import pytest
@@ -128,7 +129,7 @@ def test_private_instagram_posts_are_rejected_before_metadata_is_discarded():
             extractor._extract_product({'user': {'is_private': True}, 'pk': '123'})
 
 
-@pytest.mark.parametrize('action', ['extract', 'download'])
+@pytest.mark.parametrize('action', ['extract', 'download', 'photos'])
 def test_workers_use_instagram_session_at_network_boundary(tmp_path, monkeypatch, action):
     cookies = tmp_path / 'instagram.txt'
     cookies.write_text('# Netscape HTTP Cookie File\n'
@@ -139,16 +140,19 @@ def test_workers_use_instagram_session_at_network_boundary(tmp_path, monkeypatch
 
     def network_boundary(ydl, *args, **kwargs):
         observed.append(ydl.cookiejar.get_cookie_header(URL))
-        return info
+        assert ydl.cookiejar.get_cookie_header('https://cdn.example/') is None
+        return io.BytesIO(b'original-image') if action == 'photos' else info
 
     monkeypatch.setattr(ytdlp_worker, 'extract_job', lambda url, ydl: network_boundary(ydl))
     monkeypatch.setattr(ytdlp_worker.YoutubeDL, 'process_ie_result', network_boundary)
+    monkeypatch.setattr(ytdlp_worker.YoutubeDL, 'urlopen', network_boundary)
     info_path = tmp_path / 'info.json'
     info_path.write_text(json.dumps(info))
     payload = tmp_path / 'job.json'
     payload.write_text(json.dumps({'url': URL, 'output': str(tmp_path / 'out.json'),
         'info_path': str(info_path), 'video_id': 'source', 'max_bytes': 100,
-        'media_dir': str(tmp_path), 'instagram_cookies_file': str(cookies)}))
+        'media_dir': str(tmp_path), 'instagram_cookies_file': str(cookies),
+        'photos': [{'urls': ['https://cdn.example/photo.jpg']}]}))
     monkeypatch.setattr(ytdlp_worker.sys, 'argv', ['worker', action, str(payload)])
     assert ytdlp_worker.worker_main() == 0
     assert observed == ['sessionid=test-session']
