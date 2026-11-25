@@ -1,7 +1,9 @@
 """Map Instagram image posts to the existing ordered photo pipeline."""
 
+from urllib.parse import urlsplit
+
 from bot.models import PhotoInfo
-from bot.models.exceptions import VideoUnavailableError
+from bot.models.exceptions import VideoUnavailableError, InstagramPhotoUnavailableError
 
 
 def photo_metadata(product: dict, video_id: str | None = None) -> dict | None:
@@ -19,6 +21,7 @@ def photo_metadata(product: dict, video_id: str | None = None) -> dict | None:
     photos = []
     for image in images:
         variants = []
+        placeholder = False
         versions = image.get('image_versions2') or {}
         for candidate in versions.get('candidates') or []:
             if not isinstance(candidate, dict):
@@ -26,11 +29,17 @@ def photo_metadata(product: dict, video_id: str | None = None) -> dict | None:
             url = candidate.get('url')
             if not isinstance(url, str) or not url.startswith(('https://', 'http://')):
                 continue
+            parts = urlsplit(url)
+            if parts.hostname == 'static.cdninstagram.com' and parts.path == '/rsrc.php/null.jpg':
+                placeholder = True
+                continue
             variants.append(PhotoInfo(
                 urls=[url], width=candidate.get('width'), height=candidate.get('height'),
                 watermark_evidence='Instagram image_versions2.candidates',
             ))
         if not variants:
+            if placeholder:
+                raise InstagramPhotoUnavailableError('Instagram photo placeholder: no actual image address was provided.')
             raise VideoUnavailableError('One Instagram photo has no supported image address.')
         selected = max(variants, key=lambda photo: (photo.width or 0) * (photo.height or 0))
         photo = selected.model_dump(mode='json')

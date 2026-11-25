@@ -56,6 +56,10 @@ class InstagramAccessError(VideoUnavailableError):
     """Instagram requires a valid session or has limited server access."""
 
 
+class InstagramPhotoUnavailableError(VideoUnavailableError):
+    """Instagram returned placeholder addresses instead of actual photographs."""
+
+
 class YouTubeAccessError(VideoUnavailableError):
     """YouTube requires a session or an anti-bot verification."""
 
@@ -91,6 +95,8 @@ class FileSizeLimitError(ApplicationError):
 def classify_error(message: str) -> ApplicationError:
     """Map explicit upstream signals; ambiguous failures stay unavailable."""
     text = message.lower()
+    if 'instagram photo placeholder' in text:
+        return InstagramPhotoUnavailableError('Instagram did not provide downloadable photographs.')
     if 'youtube cookies file' in text or ('[youtube]' in text and any(
             signal in text for signal in ('not a bot', 'unusual traffic', 'automated queries'))):
         return YouTubeAccessError('YouTube requires a valid operator-provided session or anti-bot verification.')

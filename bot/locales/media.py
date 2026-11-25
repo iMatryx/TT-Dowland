@@ -1,6 +1,10 @@
 """Media UI translations keyed by the original Romanian template."""
 
 MEDIA = {
+    'Instagram nu a furnizat fotografiile acestei postări, ci doar adrese de înlocuire. Nu există imagini descărcabile în răspunsul primit. Aceasta nu confirmă că postarea a fost ștearsă.': {
+        'ru': 'Instagram не предоставил фотографии этой публикации, а только адреса заглушек. В полученном ответе нет изображений для скачивания. Это не подтверждает, что публикация удалена.',
+        'en': 'Instagram provided placeholder addresses instead of photographs for this post. The response contains no downloadable images. This does not confirm that the post was deleted.',
+    },
     'YouTube solicită verificare anti-bot sau o sesiune validă. Administratorul trebuie să configureze ori să reînnoiască sesiunea YouTube. Această eroare nu confirmă că videoclipul este privat.': {
         'ru': 'YouTube требует проверку на бота или действующую сессию. Администратору необходимо настроить или обновить сессию YouTube. Эта ошибка не подтверждает, что видео приватное.',
         'en': 'YouTube requires an anti-bot check or a valid session. The administrator needs to configure or renew the YouTube session. This error does not confirm that the video is private.',
